@@ -78,7 +78,6 @@
   </div>
 
   <div id="appContent" class="hidden">
-
     <header class="border-b border-slate-800/60 backdrop-blur-xl bg-slate-950/40 sticky top-0 z-30">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
         <div class="flex items-center gap-3 min-w-0">
@@ -98,7 +97,6 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
-
       <section class="mb-6 animate-fadeup">
         <div class="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900/60 to-slate-950/80 p-7 sm:p-10">
           <div class="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-amber-500/15 blur-3xl"></div>
@@ -110,7 +108,7 @@
                 <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">Total Revenue</span>
               </div>
               <span id="currentMonthLabel" class="text-[11px] text-slate-400 font-mono-num"></span>
-              <span class="ml-2 flex h-2 w-2 relative">
+              <span class="ml-2 flex h-2 w-2 relative" title="실시간 연동 중">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                 <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
@@ -142,7 +140,6 @@
       </section>
 
       <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
-
         <a href="https://gusco1003-sudo.github.io/counton/" target="_blank" class="group block animate-fadeup delay-100">
           <div class="card-glow-cyan relative overflow-hidden rounded-2xl border border-cyan-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-cyan-700/50 hover:scale-[1.005]">
             <div class="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl"></div>
@@ -201,7 +198,8 @@
           </div>
         </a>
 
-        <a href="#" class="group block animate-fadeup delay-300">
+        <!-- 링크 정상 적용 완료 (target="_blank" 추가) -->
+        <a href="https://gusco1003-sudo.github.io/lunox/" target="_blank" class="group block animate-fadeup delay-300">
           <div class="card-glow-purple relative overflow-hidden rounded-2xl border border-purple-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-purple-700/50 hover:scale-[1.005]">
             <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
             <div class="relative">
@@ -287,7 +285,6 @@
   <script>
     const FIREBASE_COUNTON  = "https://ts3pl-982ef-default-rtdb.firebaseio.com/ts3pl_data.json";
     const FIREBASE_FORLIGHT = "https://ts3pl-982ef-default-rtdb.firebaseio.com/forlight_data.json";
-    // 3번째 업체 루녹스(Lunox) 파이어베이스 주소 연결
     const FIREBASE_LUNOX    = "https://ts3pl-982ef-default-rtdb.firebaseio.com/lunox_data.json"; 
     
     const ADMIN_PW = "4656";
@@ -295,6 +292,10 @@
     let countonData = null, forlightData = null, lunoxData = null;
     let currentMonth = "";
     let trendChart = null, breakdownChart = null;
+
+    function getFormattedDate(d = new Date()) {
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
 
     document.addEventListener("DOMContentLoaded", () => {
       const inp = document.getElementById('pwInput');
@@ -305,7 +306,7 @@
         if (!document.getElementById('appContent').classList.contains('hidden')) {
           refreshData(false);
         }
-      }, 30000); 
+      }, 10000); 
     });
 
     function confirmPassword() {
@@ -342,14 +343,50 @@
         document.getElementById('loader').classList.add('flex');
       }
       try {
+        const fetchOpts = {
+          method: 'GET',
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+          }
+        };
+
         const [c, f, l] = await Promise.all([
-          fetch(FIREBASE_COUNTON).then(r => r.json()),
-          fetch(FIREBASE_FORLIGHT).then(r => r.json()),
-          fetch(FIREBASE_LUNOX).then(r => r.ok ? r.json() : null)
+          fetch(FIREBASE_COUNTON, fetchOpts).then(r => r.json()),
+          fetch(FIREBASE_FORLIGHT, fetchOpts).then(r => r.json()),
+          fetch(FIREBASE_LUNOX, fetchOpts).then(r => r.ok ? r.json() : null)
         ]);
+        
         countonData  = c || { inventory: [], logs: [], dailyPltLog: {} };
         forlightData = f || { inventory: [], logs: [], dailyPltLog: {} };
         lunoxData    = l || { inventory: [], logs: [], dailyPltLog: {} };
+
+        const patchDailyPlt = (dataObj) => {
+          if (!dataObj) return;
+          if (!dataObj.dailyPltLog) dataObj.dailyPltLog = {};
+          
+          const todayStr = getFormattedDate();
+          
+          if (dataObj.dailyPltLog[todayStr] === undefined) {
+            let plt = 0;
+            const inv = Array.isArray(dataObj.inventory) ? dataObj.inventory : Object.values(dataObj.inventory || {});
+            inv.forEach(i => {
+              if (i && i.id !== 'in_40ft') {
+                const box = parseInt(i.box) || 0;
+                const pltStd = parseInt(i.pltStd) || 1;
+                plt += Math.ceil(box / pltStd);
+              }
+            });
+            dataObj.dailyPltLog[todayStr] = plt;
+          }
+        };
+
+        patchDailyPlt(countonData);
+        patchDailyPlt(forlightData);
+        patchDailyPlt(lunoxData);
+
       } catch (e) {
         console.error("데이터 로드 실패", e);
         if(!countonData) countonData = { inventory: [], logs: [], dailyPltLog: {} };
@@ -364,9 +401,9 @@
 
     function buildMonthSelector() {
       const months = new Set([currentMonth]);
-      (countonData.logs || []).forEach(l => l.time && months.add(l.time.substring(0,7)));
-      (forlightData.logs || []).forEach(l => l.time && months.add(l.time.substring(0,7)));
-      (lunoxData.logs || []).forEach(l => l.time && months.add(l.time.substring(0,7)));
+      Object.values(countonData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
+      Object.values(forlightData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
+      Object.values(lunoxData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
       
       Object.keys(countonData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
       Object.keys(forlightData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
@@ -384,42 +421,39 @@
 
     function calcCounton(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      Object.keys(countonData.dailyPltLog || {}).forEach(d => {
-        if (d.startsWith(month)) storage += (countonData.dailyPltLog[d] || 0) * 700;
+      Object.entries(countonData.dailyPltLog || {}).forEach(([d, plt]) => {
+        if (d.startsWith(month)) storage += (plt || 0) * 700;
       });
-      (countonData.logs || []).forEach(l => {
-        if (!l.time || !l.time.startsWith(month)) return;
-        if (l.type === 'IN')  inFee  += (l.fee || 0);
-        if (l.type === 'OUT') outFee += (l.fee || 0);
+      Object.values(countonData.logs || {}).forEach(l => {
+        if (!l || !l.time || !l.time.startsWith(month)) return;
+        if (l.type === 'IN') inFee += (l.fee || 0);
+        else if (l.type === 'OUT') outFee += (l.fee || 0);
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
 
     function calcForlight(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      Object.keys(forlightData.dailyPltLog || {}).forEach(d => {
-        if (d.startsWith(month)) storage += (forlightData.dailyPltLog[d] || 0) * 900;
+      Object.entries(forlightData.dailyPltLog || {}).forEach(([d, plt]) => {
+        if (d.startsWith(month)) storage += (plt || 0) * 900;
       });
-      (forlightData.logs || []).forEach(l => {
-        if (!l.time || !l.time.startsWith(month)) return;
+      Object.values(forlightData.logs || {}).forEach(l => {
+        if (!l || !l.time || !l.time.startsWith(month)) return;
         if (l.type === 'IN') inFee += (l.fee || 0);
         else outFee += (l.fee || 0);
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
 
-    // 루녹스 정산 로직 반영
     function calcLunox(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      Object.keys(lunoxData.dailyPltLog || {}).forEach(d => {
-        // 루녹스 보관료 700원 반영
-        if (d.startsWith(month)) storage += (lunoxData.dailyPltLog[d] || 0) * 700; 
+      Object.entries(lunoxData.dailyPltLog || {}).forEach(([d, plt]) => {
+        if (d.startsWith(month)) storage += (plt || 0) * 700; 
       });
-      (lunoxData.logs || []).forEach(l => {
-        if (!l.time || !l.time.startsWith(month)) return;
-        // Firebase 로그에 저장된 fee 데이터를 그대로 합산
+      Object.values(lunoxData.logs || {}).forEach(l => {
+        if (!l || !l.time || !l.time.startsWith(month)) return;
         if (l.type === 'IN') inFee += (l.fee || 0);
-        else outFee += (l.fee || 0);
+        else if (l.type === 'OUT') outFee += (l.fee || 0);
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
@@ -428,33 +462,28 @@
       currentMonth = document.getElementById('monthSelector').value;
       const c = calcCounton(currentMonth);
       const f = calcForlight(currentMonth);
-      const l = calcLunox(currentMonth); // 루녹스 연산
+      const l = calcLunox(currentMonth);
 
-      // 메가 카드 (3사 합산)
       document.getElementById('totalRevenue').innerText = (c.total + f.total + l.total).toLocaleString();
       document.getElementById('totalStorage').innerText = (c.storage + f.storage + l.storage).toLocaleString();
       document.getElementById('totalOut').innerText     = (c.outFee + f.outFee + l.outFee).toLocaleString();
       document.getElementById('totalIn').innerText      = (c.inFee + f.inFee + l.inFee).toLocaleString();
 
-      // 카운트온
       document.getElementById('contonRevenue').innerText = c.total.toLocaleString();
       document.getElementById('contonStorage').innerText = c.storage.toLocaleString();
       document.getElementById('contonOut').innerText     = c.outFee.toLocaleString();
       document.getElementById('contonIn').innerText      = c.inFee.toLocaleString();
 
-      // 포라이트
       document.getElementById('forlightRevenue').innerText = f.total.toLocaleString();
       document.getElementById('forlightStorage').innerText = f.storage.toLocaleString();
       document.getElementById('forlightOut').innerText     = f.outFee.toLocaleString();
       document.getElementById('forlightIn').innerText      = f.inFee.toLocaleString();
 
-      // 루녹스
       document.getElementById('lunoxRevenue').innerText = l.total.toLocaleString();
       document.getElementById('lunoxStorage').innerText = l.storage.toLocaleString();
       document.getElementById('lunoxOut').innerText     = l.outFee.toLocaleString();
       document.getElementById('lunoxIn').innerText      = l.inFee.toLocaleString();
 
-      // 비중계산 (3사)
       const sum = c.total + f.total + l.total;
       const cRatio = sum > 0 ? (c.total / sum) * 100 : 33.3;
       const fRatio = sum > 0 ? (f.total / sum) * 100 : 33.3;
@@ -468,14 +497,13 @@
       document.getElementById('ratioForlightText').innerText = fRatio.toFixed(1) + '%';
       document.getElementById('ratioLunoxText').innerText    = lRatio.toFixed(1) + '%';
       
-      document.getElementById('ratioLabel').innerText = sum > 0
-        ? `${(sum/10000).toFixed(0)}만원 기준`
-        : '데이터 없음';
+      document.getElementById('ratioLabel').innerText = sum > 0 ? `${(sum/10000).toFixed(0)}만원 기준` : '데이터 없음';
 
-      // 라벨
       const [y, mm] = currentMonth.split('-');
       document.getElementById('currentMonthLabel').innerText = `${y}.${mm}`;
-      document.getElementById('lastUpdate').innerText = new Date().toLocaleString('ko-KR', { hour12: false });
+      
+      const now = new Date();
+      document.getElementById('lastUpdate').innerText = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
 
       drawCharts(c, f, l);
     }
