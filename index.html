@@ -40,11 +40,10 @@
     .delay-200 { animation-delay: 0.16s; }
     .delay-300 { animation-delay: 0.24s; }
     .delay-400 { animation-delay: 0.32s; }
-    .delay-500 { animation-delay: 0.40s; }
 
     .card-glow-cyan { box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.08), 0 20px 60px -20px rgba(34, 211, 238, 0.15); }
     .card-glow-indigo { box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.08), 0 20px 60px -20px rgba(129, 140, 248, 0.15); }
-    .card-glow-pink { box-shadow: inset 0 0 0 1px rgba(244, 114, 182, 0.08), 0 20px 60px -20px rgba(244, 114, 182, 0.15); }
+    .card-glow-purple { box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.08), 0 20px 60px -20px rgba(168, 85, 247, 0.15); }
 
     .shimmer-text {
       background: linear-gradient(110deg, #fde68a 0%, #fbbf24 35%, #f59e0b 60%, #fcd34d 100%);
@@ -91,7 +90,7 @@
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
           <select id="monthSelector" onchange="render()" class="sel-arrow bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs sm:text-sm font-mono-num text-slate-200 focus:border-cyan-500 outline-none cursor-pointer"></select>
-          <button onclick="refreshData()" title="새로고침" class="bg-slate-900 border border-slate-800 hover:border-cyan-700 rounded-lg p-2 transition">
+          <button onclick="refreshData(true)" title="새로고침" class="bg-slate-900 border border-slate-800 hover:border-cyan-700 rounded-lg p-2 transition">
             <svg class="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           </button>
         </div>
@@ -111,6 +110,10 @@
                 <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">Total Revenue</span>
               </div>
               <span id="currentMonthLabel" class="text-[11px] text-slate-400 font-mono-num"></span>
+              <span class="ml-2 flex h-2 w-2 relative">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              </span>
             </div>
 
             <div class="flex items-baseline gap-3 flex-wrap">
@@ -141,21 +144,18 @@
       <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
 
         <a href="https://gusco1003-sudo.github.io/counton/" target="_blank" class="group block animate-fadeup delay-100">
-          <div class="card-glow-cyan relative overflow-hidden rounded-2xl border border-cyan-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-cyan-700/50 hover:scale-[1.005] h-full flex flex-col">
+          <div class="card-glow-cyan relative overflow-hidden rounded-2xl border border-cyan-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-cyan-700/50 hover:scale-[1.005]">
             <div class="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl"></div>
-            <div class="relative flex-1">
+            <div class="relative">
               <div class="flex items-start justify-between mb-5">
                 <div>
                   <div class="flex items-center gap-2 mb-1">
                     <span class="text-xl">📦</span>
                     <h3 class="font-display font-bold text-lg text-white">카운트온</h3>
-                    <span class="text-[9px] font-mono-num text-cyan-500/60 border border-cyan-900/50 rounded px-1.5 py-0.5">ts3pl_data</span>
                   </div>
                   <p class="text-[10px] text-slate-500">박스/낱개 정산 · 보관료 700원/PLT</p>
                 </div>
-                <span class="text-sm text-cyan-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition">↗</span>
               </div>
-
               <div class="mb-5">
                 <p class="text-[10px] text-slate-400 font-semibold mb-1">월 매출</p>
                 <div class="flex items-baseline gap-2">
@@ -163,41 +163,28 @@
                   <span class="text-sm text-slate-500">원</span>
                 </div>
               </div>
-            </div>
-
-            <div class="relative grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60 mt-auto">
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">보관</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonStorage">0</span></p>
-              </div>
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">출고</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonOut">0</span></p>
-              </div>
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">입고</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonIn">0</span></p>
+              <div class="grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60">
+                <div><p class="text-[10px] text-slate-500 mb-0.5">보관</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonStorage">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">출고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonOut">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">입고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonIn">0</span></p></div>
               </div>
             </div>
           </div>
         </a>
 
         <a href="https://gusco1003-sudo.github.io/forlight/" target="_blank" class="group block animate-fadeup delay-200">
-          <div class="card-glow-indigo relative overflow-hidden rounded-2xl border border-indigo-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-indigo-700/50 hover:scale-[1.005] h-full flex flex-col">
+          <div class="card-glow-indigo relative overflow-hidden rounded-2xl border border-indigo-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-indigo-700/50 hover:scale-[1.005]">
             <div class="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl"></div>
-            <div class="relative flex-1">
+            <div class="relative">
               <div class="flex items-start justify-between mb-5">
                 <div>
                   <div class="flex items-center gap-2 mb-1">
                     <span class="text-xl">🏭</span>
                     <h3 class="font-display font-bold text-lg text-white">포라이트</h3>
-                    <span class="text-[9px] font-mono-num text-indigo-400/60 border border-indigo-900/50 rounded px-1.5 py-0.5">forlight_data</span>
                   </div>
                   <p class="text-[10px] text-slate-500">B2B 파렛트 물류 · 보관료 900원/PLT</p>
                 </div>
-                <span class="text-sm text-indigo-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition">↗</span>
               </div>
-
               <div class="mb-5">
                 <p class="text-[10px] text-slate-400 font-semibold mb-1">월 매출</p>
                 <div class="flex items-baseline gap-2">
@@ -205,67 +192,43 @@
                   <span class="text-sm text-slate-500">원</span>
                 </div>
               </div>
-            </div>
-
-            <div class="relative grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60 mt-auto">
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">보관</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightStorage">0</span></p>
-              </div>
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">출고</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightOut">0</span></p>
-              </div>
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">입고</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightIn">0</span></p>
+              <div class="grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60">
+                <div><p class="text-[10px] text-slate-500 mb-0.5">보관</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightStorage">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">출고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightOut">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">입고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightIn">0</span></p></div>
               </div>
             </div>
           </div>
         </a>
 
-        <a href="https://gusco1003-sudo.github.io/lunox/" target="_blank" class="group block animate-fadeup delay-300">
-          <div class="card-glow-pink relative overflow-hidden rounded-2xl border border-pink-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-pink-700/50 hover:scale-[1.005] h-full flex flex-col">
-            <div class="absolute top-0 right-0 w-32 h-32 bg-pink-500/10 rounded-full blur-3xl"></div>
-            <div class="relative flex-1">
+        <a href="#" class="group block animate-fadeup delay-300">
+          <div class="card-glow-purple relative overflow-hidden rounded-2xl border border-purple-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-purple-700/50 hover:scale-[1.005]">
+            <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
+            <div class="relative">
               <div class="flex items-start justify-between mb-5">
                 <div>
                   <div class="flex items-center gap-2 mb-1">
-                    <span class="text-xl">🧴</span>
+                    <span class="text-xl">💡</span>
                     <h3 class="font-display font-bold text-lg text-white">루녹스</h3>
-                    <span class="text-[9px] font-mono-num text-pink-400/60 border border-pink-900/50 rounded px-1.5 py-0.5">lunox_data</span>
                   </div>
-                  <p class="text-[10px] text-slate-500">화장품 물류 · 보관료 700원/PLT</p>
+                  <p class="text-[10px] text-slate-500">B2C 램프 물류 · 보관료 700원/PLT</p>
                 </div>
-                <span class="text-sm text-pink-400 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition">↗</span>
               </div>
-
               <div class="mb-5">
                 <p class="text-[10px] text-slate-400 font-semibold mb-1">월 매출</p>
                 <div class="flex items-baseline gap-2">
-                  <span id="lunoxRevenue" class="font-mono-num font-black text-3xl sm:text-4xl text-pink-300 break-all">0</span>
+                  <span id="lunoxRevenue" class="font-mono-num font-black text-3xl sm:text-4xl text-purple-300 break-all">0</span>
                   <span class="text-sm text-slate-500">원</span>
                 </div>
               </div>
-            </div>
-
-            <div class="relative grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60 mt-auto">
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">보관</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxStorage">0</span></p>
-              </div>
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">출고</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxOut">0</span></p>
-              </div>
-              <div>
-                <p class="text-[10px] text-slate-500 mb-0.5">입고</p>
-                <p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxIn">0</span></p>
+              <div class="grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60">
+                <div><p class="text-[10px] text-slate-500 mb-0.5">보관</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxStorage">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">출고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxOut">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">입고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxIn">0</span></p></div>
               </div>
             </div>
           </div>
         </a>
-
       </section>
 
       <section class="mb-6 animate-fadeup delay-400">
@@ -276,18 +239,18 @@
           </div>
           <div class="flex h-3 rounded-full overflow-hidden bg-slate-800">
             <div id="ratioCounton" class="bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-700" style="width:33.3%"></div>
-            <div id="ratioForlight" class="bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-700 border-l border-slate-800" style="width:33.3%"></div>
-            <div id="ratioLunox" class="bg-gradient-to-r from-pink-500 to-pink-400 transition-all duration-700 border-l border-slate-800" style="width:33.4%"></div>
+            <div id="ratioForlight" class="bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-700" style="width:33.3%"></div>
+            <div id="ratioLunox" class="bg-gradient-to-r from-purple-500 to-purple-400 transition-all duration-700" style="width:33.4%"></div>
           </div>
-          <div class="flex justify-between mt-3 text-[10px]">
-            <span class="text-cyan-400 font-mono-num font-bold flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-400"></span> 카운트온 <span id="ratioCountonText">0%</span></span>
-            <span class="text-indigo-400 font-mono-num font-bold flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-indigo-400"></span> 포라이트 <span id="ratioForlightText">0%</span></span>
-            <span class="text-pink-400 font-mono-num font-bold flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-pink-400"></span> 루녹스 <span id="ratioLunoxText">0%</span></span>
+          <div class="flex justify-between mt-2 text-[10px]">
+            <span class="text-cyan-400 font-mono-num font-bold">카운트온 <span id="ratioCountonText">0%</span></span>
+            <span class="text-indigo-400 font-mono-num font-bold">포라이트 <span id="ratioForlightText">0%</span></span>
+            <span class="text-purple-400 font-mono-num font-bold">루녹스 <span id="ratioLunoxText">0%</span></span>
           </div>
         </div>
       </section>
 
-      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 animate-fadeup delay-500">
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 animate-fadeup delay-400">
         <div class="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6">
           <div class="flex items-center justify-between mb-4">
             <div>
@@ -297,7 +260,7 @@
             <div class="flex items-center gap-3 text-[10px]">
               <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span><span class="text-slate-400 font-semibold">카운트온</span></span>
               <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span><span class="text-slate-400 font-semibold">포라이트</span></span>
-              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-pink-400"></span><span class="text-slate-400 font-semibold">루녹스</span></span>
+              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span><span class="text-slate-400 font-semibold">루녹스</span></span>
             </div>
           </div>
           <div class="h-56 sm:h-64">
@@ -316,7 +279,7 @@
 
       <footer class="mt-12 mb-6 flex flex-col sm:flex-row items-center justify-between gap-2">
         <p class="text-[10px] text-slate-600">TS3PL · Consolidated Dashboard</p>
-        <p class="text-[10px] text-slate-600 font-mono-num">마지막 업데이트: <span id="lastUpdate">—</span></p>
+        <p class="text-[10px] text-slate-600 font-mono-num">마지막 동기화: <span id="lastUpdate">—</span></p>
       </footer>
     </main>
   </div>
@@ -324,7 +287,9 @@
   <script>
     const FIREBASE_COUNTON  = "https://ts3pl-982ef-default-rtdb.firebaseio.com/ts3pl_data.json";
     const FIREBASE_FORLIGHT = "https://ts3pl-982ef-default-rtdb.firebaseio.com/forlight_data.json";
-    const FIREBASE_LUNOX    = "https://ts3pl-982ef-default-rtdb.firebaseio.com/lunox_data.json";
+    // 3번째 업체 루녹스(Lunox) 파이어베이스 주소 연결
+    const FIREBASE_LUNOX    = "https://ts3pl-982ef-default-rtdb.firebaseio.com/lunox_data.json"; 
+    
     const ADMIN_PW = "4656";
 
     let countonData = null, forlightData = null, lunoxData = null;
@@ -335,6 +300,12 @@
       const inp = document.getElementById('pwInput');
       inp.addEventListener('keypress', e => { if (e.key === 'Enter') confirmPassword(); });
       inp.focus();
+
+      setInterval(() => {
+        if (!document.getElementById('appContent').classList.contains('hidden')) {
+          refreshData(false);
+        }
+      }, 30000); 
     });
 
     function confirmPassword() {
@@ -354,42 +325,45 @@
     async function init() {
       const today = new Date();
       currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
-      await loadData();
+      await loadData(true);
       buildMonthSelector();
       render();
     }
 
-    async function loadData() {
-      document.getElementById('loader').classList.remove('hidden');
-      document.getElementById('loader').classList.add('flex');
+    async function refreshData(showLoader = true) {
+      await loadData(showLoader);
+      buildMonthSelector();
+      render();
+    }
+
+    async function loadData(showLoader) {
+      if (showLoader) {
+        document.getElementById('loader').classList.remove('hidden');
+        document.getElementById('loader').classList.add('flex');
+      }
       try {
         const [c, f, l] = await Promise.all([
           fetch(FIREBASE_COUNTON).then(r => r.json()),
           fetch(FIREBASE_FORLIGHT).then(r => r.json()),
-          fetch(FIREBASE_LUNOX).then(r => r.json())
+          fetch(FIREBASE_LUNOX).then(r => r.ok ? r.json() : null)
         ]);
         countonData  = c || { inventory: [], logs: [], dailyPltLog: {} };
         forlightData = f || { inventory: [], logs: [], dailyPltLog: {} };
         lunoxData    = l || { inventory: [], logs: [], dailyPltLog: {} };
       } catch (e) {
         console.error("데이터 로드 실패", e);
-        countonData  = { inventory: [], logs: [], dailyPltLog: {} };
-        forlightData = { inventory: [], logs: [], dailyPltLog: {} };
-        lunoxData    = { inventory: [], logs: [], dailyPltLog: {} };
+        if(!countonData) countonData = { inventory: [], logs: [], dailyPltLog: {} };
+        if(!forlightData) forlightData = { inventory: [], logs: [], dailyPltLog: {} };
+        if(!lunoxData) lunoxData = { inventory: [], logs: [], dailyPltLog: {} };
       }
-      document.getElementById('loader').classList.add('hidden');
-      document.getElementById('loader').classList.remove('flex');
-    }
-
-    async function refreshData() {
-      await loadData();
-      buildMonthSelector();
-      render();
+      if (showLoader) {
+        document.getElementById('loader').classList.add('hidden');
+        document.getElementById('loader').classList.remove('flex');
+      }
     }
 
     function buildMonthSelector() {
       const months = new Set([currentMonth]);
-      
       (countonData.logs || []).forEach(l => l.time && months.add(l.time.substring(0,7)));
       (forlightData.logs || []).forEach(l => l.time && months.add(l.time.substring(0,7)));
       (lunoxData.logs || []).forEach(l => l.time && months.add(l.time.substring(0,7)));
@@ -399,9 +373,12 @@
       Object.keys(lunoxData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
 
       const sorted = Array.from(months).sort().reverse();
-      document.getElementById('monthSelector').innerHTML = sorted.map(m => {
+      const selector = document.getElementById('monthSelector');
+      const currentVal = selector.value || currentMonth;
+      
+      selector.innerHTML = sorted.map(m => {
         const [y, mm] = m.split('-');
-        return `<option value="${m}" ${m===currentMonth?'selected':''}>${y}년 ${parseInt(mm)}월</option>`;
+        return `<option value="${m}" ${m===currentVal?'selected':''}>${y}년 ${parseInt(mm)}월</option>`;
       }).join('');
     }
 
@@ -426,20 +403,23 @@
       (forlightData.logs || []).forEach(l => {
         if (!l.time || !l.time.startsWith(month)) return;
         if (l.type === 'IN') inFee += (l.fee || 0);
-        else outFee += (l.fee || 0); // OUT_SELF, OUT_COUPANG 등
+        else outFee += (l.fee || 0);
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
 
+    // 루녹스 정산 로직 반영
     function calcLunox(month) {
       let storage = 0, inFee = 0, outFee = 0;
       Object.keys(lunoxData.dailyPltLog || {}).forEach(d => {
-        if (d.startsWith(month)) storage += (lunoxData.dailyPltLog[d] || 0) * 700;
+        // 루녹스 보관료 700원 반영
+        if (d.startsWith(month)) storage += (lunoxData.dailyPltLog[d] || 0) * 700; 
       });
       (lunoxData.logs || []).forEach(l => {
         if (!l.time || !l.time.startsWith(month)) return;
-        if (l.type === 'IN')  inFee  += (l.fee || 0);
-        if (l.type === 'OUT') outFee += (l.fee || 0);
+        // Firebase 로그에 저장된 fee 데이터를 그대로 합산
+        if (l.type === 'IN') inFee += (l.fee || 0);
+        else outFee += (l.fee || 0);
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
@@ -448,51 +428,51 @@
       currentMonth = document.getElementById('monthSelector').value;
       const c = calcCounton(currentMonth);
       const f = calcForlight(currentMonth);
-      const l = calcLunox(currentMonth);
+      const l = calcLunox(currentMonth); // 루녹스 연산
 
-      // 메가 카드 (전체 통합)
+      // 메가 카드 (3사 합산)
       document.getElementById('totalRevenue').innerText = (c.total + f.total + l.total).toLocaleString();
       document.getElementById('totalStorage').innerText = (c.storage + f.storage + l.storage).toLocaleString();
       document.getElementById('totalOut').innerText     = (c.outFee + f.outFee + l.outFee).toLocaleString();
       document.getElementById('totalIn').innerText      = (c.inFee + f.inFee + l.inFee).toLocaleString();
 
-      // 카운트온 개별 내역
+      // 카운트온
       document.getElementById('contonRevenue').innerText = c.total.toLocaleString();
       document.getElementById('contonStorage').innerText = c.storage.toLocaleString();
       document.getElementById('contonOut').innerText     = c.outFee.toLocaleString();
       document.getElementById('contonIn').innerText      = c.inFee.toLocaleString();
 
-      // 포라이트 개별 내역
+      // 포라이트
       document.getElementById('forlightRevenue').innerText = f.total.toLocaleString();
       document.getElementById('forlightStorage').innerText = f.storage.toLocaleString();
       document.getElementById('forlightOut').innerText     = f.outFee.toLocaleString();
       document.getElementById('forlightIn').innerText      = f.inFee.toLocaleString();
 
-      // 루녹스 개별 내역
+      // 루녹스
       document.getElementById('lunoxRevenue').innerText = l.total.toLocaleString();
       document.getElementById('lunoxStorage').innerText = l.storage.toLocaleString();
       document.getElementById('lunoxOut').innerText     = l.outFee.toLocaleString();
       document.getElementById('lunoxIn').innerText      = l.inFee.toLocaleString();
 
-      // 비중 및 차트용 비율 계산 (3등분)
+      // 비중계산 (3사)
       const sum = c.total + f.total + l.total;
       const cRatio = sum > 0 ? (c.total / sum) * 100 : 33.3;
       const fRatio = sum > 0 ? (f.total / sum) * 100 : 33.3;
       const lRatio = sum > 0 ? (l.total / sum) * 100 : 33.4;
-      
+
       document.getElementById('ratioCounton').style.width  = cRatio + '%';
       document.getElementById('ratioForlight').style.width = fRatio + '%';
       document.getElementById('ratioLunox').style.width    = lRatio + '%';
       
-      document.getElementById('ratioCountonText').innerText  = (sum > 0 ? cRatio.toFixed(1) : 0) + '%';
-      document.getElementById('ratioForlightText').innerText = (sum > 0 ? fRatio.toFixed(1) : 0) + '%';
-      document.getElementById('ratioLunoxText').innerText    = (sum > 0 ? lRatio.toFixed(1) : 0) + '%';
+      document.getElementById('ratioCountonText').innerText  = cRatio.toFixed(1) + '%';
+      document.getElementById('ratioForlightText').innerText = fRatio.toFixed(1) + '%';
+      document.getElementById('ratioLunoxText').innerText    = lRatio.toFixed(1) + '%';
       
       document.getElementById('ratioLabel').innerText = sum > 0
         ? `${(sum/10000).toFixed(0)}만원 기준`
         : '데이터 없음';
 
-      // 라벨 및 업데이트 시간
+      // 라벨
       const [y, mm] = currentMonth.split('-');
       document.getElementById('currentMonthLabel').innerText = `${y}.${mm}`;
       document.getElementById('lastUpdate').innerText = new Date().toLocaleString('ko-KR', { hour12: false });
@@ -504,16 +484,15 @@
       const [yy, mm] = currentMonth.split('-').map(Number);
       const months = [];
       for (let i = 5; i >= 0; i--) {
-        const d = new Date(yy, mm - 1 - i, 1);
+        let d = new Date(yy, mm - 1 - i, 1);
         months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
       }
       const ctonVals = months.map(mo => calcCounton(mo).total);
       const flVals   = months.map(mo => calcForlight(mo).total);
-      const lxVals   = months.map(mo => calcLunox(mo).total);
+      const luVals   = months.map(mo => calcLunox(mo).total);
 
       const tickFmt = v => v >= 10000000 ? (v/10000000).toFixed(1)+'천만' : v >= 10000 ? (v/10000).toFixed(0)+'만' : v >= 1000 ? (v/1000).toFixed(0)+'K' : v;
 
-      // 꺾은선 차트 (추이)
       if (trendChart) trendChart.destroy();
       trendChart = new Chart(document.getElementById('trendChart'), {
         type: 'line',
@@ -522,7 +501,7 @@
           datasets: [
             { label: '카운트온', data: ctonVals, borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.12)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: '#22d3ee', pointBorderColor: '#0e1117', pointBorderWidth: 2 },
             { label: '포라이트', data: flVals,   borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.12)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: '#818cf8', pointBorderColor: '#0e1117', pointBorderWidth: 2 },
-            { label: '루녹스',   data: lxVals,   borderColor: '#f472b6', backgroundColor: 'rgba(244,114,182,0.12)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: '#f472b6', pointBorderColor: '#0e1117', pointBorderWidth: 2 }
+            { label: '루녹스',   data: luVals,   borderColor: '#a855f7', backgroundColor: 'rgba(168,85,247,0.12)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: '#a855f7', pointBorderColor: '#0e1117', pointBorderWidth: 2 }
           ]
         },
         options: {
@@ -542,7 +521,6 @@
         }
       });
 
-      // 누적 막대 차트 (구성요소 비교)
       if (breakdownChart) breakdownChart.destroy();
       breakdownChart = new Chart(document.getElementById('breakdownChart'), {
         type: 'bar',
