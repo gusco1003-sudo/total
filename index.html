@@ -296,34 +296,69 @@
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
 
-    // 💡 모든 DB에 공통으로 적용되는 강력한 '빈 날짜 보관료 이월 엔진'
-    function buildDailyStorage(month, dataObj) {
-      if (!dataObj) return {};
-      const series = {};
-      const [year, mon] = month.split('-').map(Number);
-      const today = new Date();
-      const todayMonthStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
-      const lastDayOfMonth = new Date(year, mon, 0).getDate();
+    // 💡 [궁극의 보관료 엔진] 스파이크 오류 방지 및 수학적 역추적 적용
+    function buildDailyStorage(month, dataObj, isForlight) {
+        if (!dataObj || !dataObj.dailyPltLog) return {};
+        const series = {};
+        const [year, mon] = month.split('-').map(Number);
+        const today = new Date();
+        const todayMonthStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+        const lastDayOfMonth = new Date(year, mon, 0).getDate();
 
-      let endDay;
-      if (month > todayMonthStr) endDay = 0;
-      else if (month === todayMonthStr) endDay = today.getDate();
-      else endDay = lastDayOfMonth;
+        let endDay = (month > todayMonthStr) ? 0 : (month === todayMonthStr ? today.getDate() : lastDayOfMonth);
 
-      const monthStart = `${month}-01`;
-      let lastVal = null;
-      
-      const priorDates = Object.keys(dataObj).filter(d => d < monthStart).sort();
-      if (priorDates.length) lastVal = dataObj[priorDates[priorDates.length - 1]];
+        const monthStart = `${month}-01`;
+        let runningInventory = null;
+        
+        const priorDates = Object.keys(dataObj.dailyPltLog).filter(d => d < monthStart).sort();
+        if (priorDates.length) runningInventory = dataObj.dailyPltLog[priorDates[priorDates.length - 1]];
 
-      for (let day = 1; day <= endDay; day++) {
-          const dStr = `${month}-${String(day).padStart(2,'0')}`;
-          if (dataObj[dStr] !== undefined && dataObj[dStr] !== null) {
-              lastVal = dataObj[dStr];
-          }
-          if (lastVal !== null) series[dStr] = lastVal;
-      }
-      return series;
+        for (let day = 1; day <= endDay; day++) {
+            const dStr = `${month}-${String(day).padStart(2,'0')}`;
+            
+            let outPlt = 0;
+            let inPlt = 0;
+            
+            if (dataObj.logs) {
+                const logsArr = Array.isArray(dataObj.logs) ? dataObj.logs : Object.values(dataObj.logs);
+                logsArr.forEach(l => {
+                    if (l && l.time && l.time.startsWith(dStr)) {
+                        const type = String(l.type || '').toUpperCase();
+                        let qty = 0;
+                        if (isForlight) {
+                            qty = Number(l.plt || 0) + (Number(l.pcs || 0) / 120);
+                        } else {
+                            let itemPltStd = 40;
+                            if (dataObj.inventory) {
+                                const invArr = Array.isArray(dataObj.inventory) ? dataObj.inventory : Object.values(dataObj.inventory);
+                                const item = invArr.find(i => i.id === l.itemId);
+                                if (item && item.pltStd) itemPltStd = Number(item.pltStd);
+                            }
+                            qty = Number(l.plt || 0) + (Number(l.box || 0) / itemPltStd);
+                        }
+
+                        if (type.includes('OUT') || type === '출고' || type === 'OUTGO') {
+                            outPlt += qty;
+                        } else if (type.includes('IN') || type === '입고' || type.includes('IN_40FT')) {
+                            inPlt += qty;
+                        }
+                    }
+                });
+            }
+
+            if (dataObj.dailyPltLog[dStr] !== undefined && dataObj.dailyPltLog[dStr] !== null) {
+                runningInventory = dataObj.dailyPltLog[dStr];
+            } else if (runningInventory !== null) {
+                // 누락된 날짜는 앞뒤 입출고 내역을 통해 실제 재고를 수학적으로 복원
+                runningInventory = runningInventory + inPlt - outPlt;
+            }
+            
+            if (runningInventory !== null) {
+                // 출고 당일은 (종료재고 + 출고량)으로 보관료 유지, 다음날부터 차감
+                series[dStr] = Math.ceil(runningInventory + outPlt);
+            }
+        }
+        return series;
     }
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -372,7 +407,7 @@
         document.getElementById('loader').classList.add('flex');
       }
       try {
-        const noCache = '?t=' + new Date().getTime(); // 캐시 무력화 필수
+        const noCache = '?t=' + new Date().getTime();
 
         const [cRes, fRes, lRes] = await Promise.allSettled([
           fetch(FIREBASE_COUNTON + noCache),
@@ -388,27 +423,32 @@
         forlightData = (f && !f.error) ? f : { inventory: [], logs: [], dailyPltLog: {} };
         lunoxData    = (l && !l.error) ? l : { inventory: [], logs: [], dailyPltLog: {} };
 
-        const patchDailyPlt = (dataObj) => {
+        const patchDailyPlt = (dataObj, isForlight) => {
           if (!dataObj) return;
           if (!dataObj.dailyPltLog) dataObj.dailyPltLog = {};
           const todayStr = getFormattedDate();
+          
           if (dataObj.dailyPltLog[todayStr] === undefined) {
             let plt = 0;
             const inv = Array.isArray(dataObj.inventory) ? dataObj.inventory : Object.values(dataObj.inventory || {});
             inv.forEach(i => {
               if (i && i.id !== 'in_40ft') {
-                const box = parseInt(i.box) || 0;
-                const pltStd = parseInt(i.pltStd) || 1;
-                plt += Math.ceil(box / pltStd);
+                if (isForlight) {
+                  plt += Math.ceil(((Number(i.plt) || 0) * 120 + (Number(i.pcs) || 0)) / 120);
+                } else {
+                  const box = parseInt(i.box) || 0;
+                  const pltStd = parseInt(i.pltStd) || 1;
+                  plt += Math.ceil(box / pltStd);
+                }
               }
             });
             dataObj.dailyPltLog[todayStr] = plt;
           }
         };
 
-        patchDailyPlt(countonData);
-        patchDailyPlt(forlightData);
-        patchDailyPlt(lunoxData);
+        patchDailyPlt(countonData, false);
+        patchDailyPlt(forlightData, true);
+        patchDailyPlt(lunoxData, false);
 
       } catch (e) {
         console.error("데이터 로드 실패:", e);
@@ -441,13 +481,12 @@
 
     function calcCounton(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      
-      const dailyStorage = buildDailyStorage(month, countonData.dailyPltLog);
+      const dailyStorage = buildDailyStorage(month, countonData, false);
       Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 700; });
       
       Object.values(countonData.logs || {}).forEach(l => {
         if (!l || !l.time || !l.time.startsWith(month)) return;
-        const fee = Number(l.fee) || 0; // 원본에서 계산된 금액 100% 신뢰
+        const fee = Number(l.fee) || 0;
         const type = String(l.type || '').toUpperCase().trim();
         if (type.startsWith('IN') || type === '입고') inFee += fee;
         else outFee += fee;
@@ -457,8 +496,7 @@
 
     function calcForlight(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      
-      const dailyStorage = buildDailyStorage(month, forlightData.dailyPltLog);
+      const dailyStorage = buildDailyStorage(month, forlightData, true);
       Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 900; });
       
       Object.values(forlightData.logs || {}).forEach(l => {
@@ -473,8 +511,7 @@
 
     function calcLunox(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      
-      const dailyStorage = buildDailyStorage(month, lunoxData.dailyPltLog);
+      const dailyStorage = buildDailyStorage(month, lunoxData, false);
       Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 700; });
       
       Object.values(lunoxData.logs || {}).forEach(l => {
