@@ -198,7 +198,6 @@
           </div>
         </a>
 
-        <!-- 링크 정상 적용 완료 (target="_blank" 추가) -->
         <a href="https://gusco1003-sudo.github.io/lunox/" target="_blank" class="group block animate-fadeup delay-300">
           <div class="card-glow-purple relative overflow-hidden rounded-2xl border border-purple-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-purple-700/50 hover:scale-[1.005]">
             <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
@@ -283,7 +282,9 @@
   </div>
 
   <script>
-    const FIREBASE_COUNTON  = "https://ts3pl-982ef-default-rtdb.firebaseio.com/ts3pl_data.json";
+    // ▼ 체크 1: 카운트온의 DB 경로가 ts3pl_data.json이 맞는지 다시 한번 확인해주세요. 
+    // 만약 카운트온 원본 코드에서는 counton_data.json 이라면 아래 주소를 수정해야 합니다.
+    const FIREBASE_COUNTON  = "https://ts3pl-982ef-default-rtdb.firebaseio.com/counton_data.json";
     const FIREBASE_FORLIGHT = "https://ts3pl-982ef-default-rtdb.firebaseio.com/forlight_data.json";
     const FIREBASE_LUNOX    = "https://ts3pl-982ef-default-rtdb.firebaseio.com/lunox_data.json"; 
     
@@ -343,25 +344,26 @@
         document.getElementById('loader').classList.add('flex');
       }
       try {
-        const fetchOpts = {
-          method: 'GET',
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-          }
-        };
+        // [수정 핵심 1] 브라우저 CORS 차단을 피하기 위해 커스텀 헤더를 지우고 ?t=시간값을 붙여 우회합니다.
+        const noCache = '?t=' + new Date().getTime();
 
-        const [c, f, l] = await Promise.all([
-          fetch(FIREBASE_COUNTON, fetchOpts).then(r => r.json()),
-          fetch(FIREBASE_FORLIGHT, fetchOpts).then(r => r.json()),
-          fetch(FIREBASE_LUNOX, fetchOpts).then(r => r.ok ? r.json() : null)
+        // [수정 핵심 2] 하나가 에러가 나더라도 다른 DB는 정상적으로 불러오도록 방어합니다.
+        const [cRes, fRes, lRes] = await Promise.allSettled([
+          fetch(FIREBASE_COUNTON + noCache),
+          fetch(FIREBASE_FORLIGHT + noCache),
+          fetch(FIREBASE_LUNOX + noCache)
         ]);
+
+        const c = cRes.status === 'fulfilled' && cRes.value.ok ? await cRes.value.json() : null;
+        const f = fRes.status === 'fulfilled' && fRes.value.ok ? await fRes.value.json() : null;
+        const l = lRes.status === 'fulfilled' && lRes.value.ok ? await lRes.value.json() : null;
         
-        countonData  = c || { inventory: [], logs: [], dailyPltLog: {} };
-        forlightData = f || { inventory: [], logs: [], dailyPltLog: {} };
-        lunoxData    = l || { inventory: [], logs: [], dailyPltLog: {} };
+        console.log("🔥 카운트온 DB 연결 확인:", c);
+        if(c === null) console.warn("카운트온 데이터를 불러오지 못했습니다. 상단의 DB 주소(ts3pl_data.json)를 점검해주세요.");
+
+        countonData  = (c && !c.error) ? c : { inventory: [], logs: [], dailyPltLog: {} };
+        forlightData = (f && !f.error) ? f : { inventory: [], logs: [], dailyPltLog: {} };
+        lunoxData    = (l && !l.error) ? l : { inventory: [], logs: [], dailyPltLog: {} };
 
         const patchDailyPlt = (dataObj) => {
           if (!dataObj) return;
@@ -388,11 +390,12 @@
         patchDailyPlt(lunoxData);
 
       } catch (e) {
-        console.error("데이터 로드 실패", e);
+        console.error("데이터 로드 실패:", e);
         if(!countonData) countonData = { inventory: [], logs: [], dailyPltLog: {} };
         if(!forlightData) forlightData = { inventory: [], logs: [], dailyPltLog: {} };
         if(!lunoxData) lunoxData = { inventory: [], logs: [], dailyPltLog: {} };
       }
+      
       if (showLoader) {
         document.getElementById('loader').classList.add('hidden');
         document.getElementById('loader').classList.remove('flex');
@@ -422,12 +425,20 @@
     function calcCounton(month) {
       let storage = 0, inFee = 0, outFee = 0;
       Object.entries(countonData.dailyPltLog || {}).forEach(([d, plt]) => {
-        if (d.startsWith(month)) storage += (plt || 0) * 700;
+        if (d.startsWith(month)) storage += Number(plt || 0) * 700;
       });
       Object.values(countonData.logs || {}).forEach(l => {
         if (!l || !l.time || !l.time.startsWith(month)) return;
-        if (l.type === 'IN') inFee += (l.fee || 0);
-        else if (l.type === 'OUT') outFee += (l.fee || 0);
+        
+        let fee = Number(l.fee);
+        if (isNaN(fee) || fee === 0) {
+           fee = Number(l.box || l.ea || 0) * 500; 
+        }
+
+        const type = String(l.type || '').toUpperCase().trim();
+        
+        if (type === 'IN' || type === '입고') inFee += fee;
+        else if (type === 'OUT' || type === '출고' || type === 'OUTGO') outFee += fee;
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
@@ -435,12 +446,16 @@
     function calcForlight(month) {
       let storage = 0, inFee = 0, outFee = 0;
       Object.entries(forlightData.dailyPltLog || {}).forEach(([d, plt]) => {
-        if (d.startsWith(month)) storage += (plt || 0) * 900;
+        if (d.startsWith(month)) storage += Number(plt || 0) * 900;
       });
       Object.values(forlightData.logs || {}).forEach(l => {
         if (!l || !l.time || !l.time.startsWith(month)) return;
-        if (l.type === 'IN') inFee += (l.fee || 0);
-        else outFee += (l.fee || 0);
+        
+        const fee = Number(l.fee) || 0;
+        const type = String(l.type || '').toUpperCase().trim();
+        
+        if (type === 'IN' || type === '입고') inFee += fee;
+        else outFee += fee;
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
@@ -448,12 +463,16 @@
     function calcLunox(month) {
       let storage = 0, inFee = 0, outFee = 0;
       Object.entries(lunoxData.dailyPltLog || {}).forEach(([d, plt]) => {
-        if (d.startsWith(month)) storage += (plt || 0) * 700; 
+        if (d.startsWith(month)) storage += Number(plt || 0) * 700; 
       });
       Object.values(lunoxData.logs || {}).forEach(l => {
         if (!l || !l.time || !l.time.startsWith(month)) return;
-        if (l.type === 'IN') inFee += (l.fee || 0);
-        else if (l.type === 'OUT') outFee += (l.fee || 0);
+        
+        const fee = Number(l.fee) || 0;
+        const type = String(l.type || '').toUpperCase().trim();
+
+        if (type === 'IN' || type === '입고') inFee += fee;
+        else if (type === 'OUT' || type === '출고') outFee += fee;
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
