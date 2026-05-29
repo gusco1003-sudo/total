@@ -296,7 +296,8 @@
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     }
 
-    // 💡 [궁극의 보관료 엔진] 스파이크 오류 방지 및 수학적 역추적 적용
+    // 💡 [개선된 데이터 병합 엔진]
+    // 개별 정산 시스템과 동일하게 1. 수동 조정값 최우선 반영, 2. 출고량 중복합산 원천 차단
     function buildDailyStorage(month, dataObj, isForlight) {
         if (!dataObj || !dataObj.dailyPltLog) return {};
         const series = {};
@@ -346,16 +347,20 @@
                 });
             }
 
+            // 마감 재고 추적
             if (dataObj.dailyPltLog[dStr] !== undefined && dataObj.dailyPltLog[dStr] !== null) {
                 runningInventory = dataObj.dailyPltLog[dStr];
             } else if (runningInventory !== null) {
-                // 누락된 날짜는 앞뒤 입출고 내역을 통해 실제 재고를 수학적으로 복원
                 runningInventory = runningInventory + inPlt - outPlt;
             }
             
-            if (runningInventory !== null) {
-                // 출고 당일은 (종료재고 + 출고량)으로 보관료 유지, 다음날부터 차감
-                series[dStr] = Math.ceil(runningInventory + outPlt);
+            // 💡 [핵심 수정 로직]
+            // 1순위: 관리자가 직접 수정한 데이터(manualStorageLog)가 존재하면 그 값을 그대로 사용
+            // 2순위: 수정한 값이 없으면 순수 마감재고(runningInventory)를 사용. 출고량(+ outPlt) 더하는 로직 완전 삭제
+            if (dataObj.manualStorageLog && dataObj.manualStorageLog[dStr] !== undefined) {
+                series[dStr] = dataObj.manualStorageLog[dStr];
+            } else if (runningInventory !== null) {
+                series[dStr] = Math.ceil(runningInventory);
             }
         }
         return series;
@@ -419,9 +424,9 @@
         const f = fRes.status === 'fulfilled' && fRes.value.ok ? await fRes.value.json() : null;
         const l = lRes.status === 'fulfilled' && lRes.value.ok ? await lRes.value.json() : null;
 
-        countonData  = (c && !c.error) ? c : { inventory: [], logs: [], dailyPltLog: {} };
-        forlightData = (f && !f.error) ? f : { inventory: [], logs: [], dailyPltLog: {} };
-        lunoxData    = (l && !l.error) ? l : { inventory: [], logs: [], dailyPltLog: {} };
+        countonData  = (c && !c.error) ? c : { inventory: [], logs: [], dailyPltLog: {}, manualStorageLog: {} };
+        forlightData = (f && !f.error) ? f : { inventory: [], logs: [], dailyPltLog: {}, manualStorageLog: {} };
+        lunoxData    = (l && !l.error) ? l : { inventory: [], logs: [], dailyPltLog: {}, manualStorageLog: {} };
 
         const patchDailyPlt = (dataObj, isForlight) => {
           if (!dataObj) return;
@@ -468,6 +473,9 @@
       Object.keys(countonData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
       Object.keys(forlightData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
       Object.keys(lunoxData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
+      Object.keys(countonData.manualStorageLog || {}).forEach(d => months.add(d.substring(0,7)));
+      Object.keys(forlightData.manualStorageLog || {}).forEach(d => months.add(d.substring(0,7)));
+      Object.keys(lunoxData.manualStorageLog || {}).forEach(d => months.add(d.substring(0,7)));
 
       const sorted = Array.from(months).sort().reverse();
       const selector = document.getElementById('monthSelector');
