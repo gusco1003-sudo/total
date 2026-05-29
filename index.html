@@ -282,8 +282,6 @@
   </div>
 
   <script>
-    // ▼ 체크 1: 카운트온의 DB 경로가 ts3pl_data.json이 맞는지 다시 한번 확인해주세요. 
-    // 만약 카운트온 원본 코드에서는 counton_data.json 이라면 아래 주소를 수정해야 합니다.
     const FIREBASE_COUNTON  = "https://ts3pl-982ef-default-rtdb.firebaseio.com/counton_data.json";
     const FIREBASE_FORLIGHT = "https://ts3pl-982ef-default-rtdb.firebaseio.com/forlight_data.json";
     const FIREBASE_LUNOX    = "https://ts3pl-982ef-default-rtdb.firebaseio.com/lunox_data.json"; 
@@ -296,6 +294,36 @@
 
     function getFormattedDate(d = new Date()) {
       return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+
+    // 💡 모든 DB에 공통으로 적용되는 강력한 '빈 날짜 보관료 이월 엔진'
+    function buildDailyStorage(month, dataObj) {
+      if (!dataObj) return {};
+      const series = {};
+      const [year, mon] = month.split('-').map(Number);
+      const today = new Date();
+      const todayMonthStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+      const lastDayOfMonth = new Date(year, mon, 0).getDate();
+
+      let endDay;
+      if (month > todayMonthStr) endDay = 0;
+      else if (month === todayMonthStr) endDay = today.getDate();
+      else endDay = lastDayOfMonth;
+
+      const monthStart = `${month}-01`;
+      let lastVal = null;
+      
+      const priorDates = Object.keys(dataObj).filter(d => d < monthStart).sort();
+      if (priorDates.length) lastVal = dataObj[priorDates[priorDates.length - 1]];
+
+      for (let day = 1; day <= endDay; day++) {
+          const dStr = `${month}-${String(day).padStart(2,'0')}`;
+          if (dataObj[dStr] !== undefined && dataObj[dStr] !== null) {
+              lastVal = dataObj[dStr];
+          }
+          if (lastVal !== null) series[dStr] = lastVal;
+      }
+      return series;
     }
 
     document.addEventListener("DOMContentLoaded", () => {
@@ -344,10 +372,8 @@
         document.getElementById('loader').classList.add('flex');
       }
       try {
-        // [수정 핵심 1] 브라우저 CORS 차단을 피하기 위해 커스텀 헤더를 지우고 ?t=시간값을 붙여 우회합니다.
-        const noCache = '?t=' + new Date().getTime();
+        const noCache = '?t=' + new Date().getTime(); // 캐시 무력화 필수
 
-        // [수정 핵심 2] 하나가 에러가 나더라도 다른 DB는 정상적으로 불러오도록 방어합니다.
         const [cRes, fRes, lRes] = await Promise.allSettled([
           fetch(FIREBASE_COUNTON + noCache),
           fetch(FIREBASE_FORLIGHT + noCache),
@@ -357,9 +383,6 @@
         const c = cRes.status === 'fulfilled' && cRes.value.ok ? await cRes.value.json() : null;
         const f = fRes.status === 'fulfilled' && fRes.value.ok ? await fRes.value.json() : null;
         const l = lRes.status === 'fulfilled' && lRes.value.ok ? await lRes.value.json() : null;
-        
-        console.log("🔥 카운트온 DB 연결 확인:", c);
-        if(c === null) console.warn("카운트온 데이터를 불러오지 못했습니다. 상단의 DB 주소(ts3pl_data.json)를 점검해주세요.");
 
         countonData  = (c && !c.error) ? c : { inventory: [], logs: [], dailyPltLog: {} };
         forlightData = (f && !f.error) ? f : { inventory: [], logs: [], dailyPltLog: {} };
@@ -368,9 +391,7 @@
         const patchDailyPlt = (dataObj) => {
           if (!dataObj) return;
           if (!dataObj.dailyPltLog) dataObj.dailyPltLog = {};
-          
           const todayStr = getFormattedDate();
-          
           if (dataObj.dailyPltLog[todayStr] === undefined) {
             let plt = 0;
             const inv = Array.isArray(dataObj.inventory) ? dataObj.inventory : Object.values(dataObj.inventory || {});
@@ -391,9 +412,6 @@
 
       } catch (e) {
         console.error("데이터 로드 실패:", e);
-        if(!countonData) countonData = { inventory: [], logs: [], dailyPltLog: {} };
-        if(!forlightData) forlightData = { inventory: [], logs: [], dailyPltLog: {} };
-        if(!lunoxData) lunoxData = { inventory: [], logs: [], dailyPltLog: {} };
       }
       
       if (showLoader) {
@@ -407,7 +425,6 @@
       Object.values(countonData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
       Object.values(forlightData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
       Object.values(lunoxData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
-      
       Object.keys(countonData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
       Object.keys(forlightData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
       Object.keys(lunoxData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
@@ -424,37 +441,31 @@
 
     function calcCounton(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      Object.entries(countonData.dailyPltLog || {}).forEach(([d, plt]) => {
-        if (d.startsWith(month)) storage += Number(plt || 0) * 700;
-      });
+      
+      const dailyStorage = buildDailyStorage(month, countonData.dailyPltLog);
+      Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 700; });
+      
       Object.values(countonData.logs || {}).forEach(l => {
         if (!l || !l.time || !l.time.startsWith(month)) return;
-        
-        let fee = Number(l.fee);
-        if (isNaN(fee) || fee === 0) {
-           fee = Number(l.box || l.ea || 0) * 500; 
-        }
-
+        const fee = Number(l.fee) || 0; // 원본에서 계산된 금액 100% 신뢰
         const type = String(l.type || '').toUpperCase().trim();
-        
-        if (type === 'IN' || type === '입고') inFee += fee;
-        else if (type === 'OUT' || type === '출고' || type === 'OUTGO') outFee += fee;
+        if (type.startsWith('IN') || type === '입고') inFee += fee;
+        else outFee += fee;
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
 
     function calcForlight(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      Object.entries(forlightData.dailyPltLog || {}).forEach(([d, plt]) => {
-        if (d.startsWith(month)) storage += Number(plt || 0) * 900;
-      });
+      
+      const dailyStorage = buildDailyStorage(month, forlightData.dailyPltLog);
+      Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 900; });
+      
       Object.values(forlightData.logs || {}).forEach(l => {
         if (!l || !l.time || !l.time.startsWith(month)) return;
-        
         const fee = Number(l.fee) || 0;
         const type = String(l.type || '').toUpperCase().trim();
-        
-        if (type === 'IN' || type === '입고') inFee += fee;
+        if (type.startsWith('IN') || type === '입고') inFee += fee;
         else outFee += fee;
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
@@ -462,17 +473,16 @@
 
     function calcLunox(month) {
       let storage = 0, inFee = 0, outFee = 0;
-      Object.entries(lunoxData.dailyPltLog || {}).forEach(([d, plt]) => {
-        if (d.startsWith(month)) storage += Number(plt || 0) * 700; 
-      });
+      
+      const dailyStorage = buildDailyStorage(month, lunoxData.dailyPltLog);
+      Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 700; });
+      
       Object.values(lunoxData.logs || {}).forEach(l => {
         if (!l || !l.time || !l.time.startsWith(month)) return;
-        
         const fee = Number(l.fee) || 0;
         const type = String(l.type || '').toUpperCase().trim();
-
-        if (type === 'IN' || type === '입고') inFee += fee;
-        else if (type === 'OUT' || type === '출고') outFee += fee;
+        if (type.startsWith('IN') || type === '입고') inFee += fee;
+        else outFee += fee;
       });
       return { storage, inFee, outFee, total: storage + inFee + outFee };
     }
