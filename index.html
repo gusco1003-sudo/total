@@ -36,14 +36,6 @@
     @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(4px); } }
     @keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fadeup { animation: fadeUp 0.6s ease-out backwards; }
-    .delay-100 { animation-delay: 0.08s; }
-    .delay-200 { animation-delay: 0.16s; }
-    .delay-300 { animation-delay: 0.24s; }
-    .delay-400 { animation-delay: 0.32s; }
-
-    .card-glow-cyan { box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.08), 0 20px 60px -20px rgba(34, 211, 238, 0.15); }
-    .card-glow-indigo { box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.08), 0 20px 60px -20px rgba(129, 140, 248, 0.15); }
-    .card-glow-purple { box-shadow: inset 0 0 0 1px rgba(168, 85, 247, 0.08), 0 20px 60px -20px rgba(168, 85, 247, 0.15); }
 
     .shimmer-text {
       background: linear-gradient(110deg, #fde68a 0%, #fbbf24 35%, #f59e0b 60%, #fcd34d 100%);
@@ -53,6 +45,28 @@
     }
     select { background-image: none !important; }
     .sel-arrow { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E") !important; background-repeat: no-repeat !important; background-position: right 0.6rem center !important; background-size: 1em !important; padding-right: 2rem !important; -webkit-appearance: none; appearance: none; }
+
+    /* 화주 카드: 강조색은 Tailwind 동적 클래스 대신 CSS 변수로 처리해
+       런타임에 추가되는 카드에서도 색이 항상 정확히 적용되도록 한다. */
+    .client-card {
+      position: relative; overflow: hidden; border-radius: 1rem;
+      border: 1px solid rgba(var(--accent-rgb), 0.22);
+      background: linear-gradient(to bottom right, rgba(15,23,42,0.8), rgba(15,23,42,0.3));
+      padding: 1.5rem;
+      transition: border-color .2s ease, transform .2s ease;
+      box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.08), 0 20px 60px -20px rgba(var(--accent-rgb), 0.15);
+    }
+    .client-card:hover { border-color: rgba(var(--accent-rgb), 0.5); transform: scale(1.005); }
+    .client-card__blob { position: absolute; top: 0; right: 0; width: 8rem; height: 8rem; border-radius: 9999px; filter: blur(48px); background: rgba(var(--accent-rgb), 0.12); }
+    .client-card__value { color: var(--accent); }
+    .ratio-seg { transition: width .7s ease; background: var(--accent); }
+    a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #22d3ee; outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+    }
+    .num-table th { font-weight: 600; color: #94a3b8; }
+    .num-table td, .num-table th { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148,163,184,0.10); white-space: nowrap; }
+    .num-table tbody tr:hover { background: rgba(148,163,184,0.05); }
   </style>
 </head>
 <body class="mesh-bg grain text-white min-h-screen">
@@ -77,6 +91,25 @@
     </div>
   </div>
 
+  <div id="detailModal" class="hidden fixed inset-0 z-50 items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4" onclick="if(event.target===this) closeDetail()">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl">
+      <div class="flex items-start justify-between gap-3 p-5 border-b border-slate-800">
+        <div class="min-w-0">
+          <h3 id="dmTitle" class="font-display font-bold text-lg text-white truncate">정산 근거</h3>
+          <p id="dmSubtitle" class="text-[11px] text-slate-400 font-mono-num mt-0.5"></p>
+        </div>
+        <button onclick="closeDetail()" class="text-slate-400 hover:text-white text-xl leading-none px-2 flex-shrink-0" aria-label="닫기">&times;</button>
+      </div>
+      <div class="overflow-auto p-5 flex-1">
+        <table class="num-table w-full text-[11px] sm:text-xs font-mono-num">
+          <thead id="dmHead"></thead>
+          <tbody id="dmBody"></tbody>
+        </table>
+      </div>
+      <div id="dmFoot" class="p-5 border-t border-slate-800 text-xs font-mono-num text-slate-300"></div>
+    </div>
+  </div>
+
   <div id="appContent" class="hidden">
     <header class="border-b border-slate-800/60 backdrop-blur-xl bg-slate-950/40 sticky top-0 z-30">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3">
@@ -97,18 +130,25 @@
     </header>
 
     <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <!-- 연동 실패 화주가 있을 때만 노출 -->
+      <div id="syncWarning" class="hidden mb-5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+        <p class="text-xs font-bold text-amber-300 mb-0.5">일부 화주 데이터를 불러오지 못했습니다</p>
+        <p id="syncWarningDetail" class="text-[11px] text-amber-200/80 font-mono-num"></p>
+      </div>
+
       <section class="mb-6 animate-fadeup">
         <div class="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900/60 to-slate-950/80 p-7 sm:p-10">
           <div class="absolute -top-32 -right-32 w-96 h-96 rounded-full bg-amber-500/15 blur-3xl"></div>
           <div class="absolute -bottom-32 -left-20 w-72 h-72 rounded-full bg-indigo-500/15 blur-3xl"></div>
 
           <div class="relative">
-            <div class="flex items-center gap-2 mb-3">
+            <div class="flex items-center gap-2 mb-3 flex-wrap">
               <div class="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30">
                 <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">Total Revenue</span>
               </div>
               <span id="currentMonthLabel" class="text-[11px] text-slate-400 font-mono-num"></span>
-              <span class="ml-2 flex h-2 w-2 relative" title="실시간 연동 중">
+              <span class="text-[10px] text-slate-500">공급가액 (VAT 별도)</span>
+              <span class="ml-1 flex h-2 w-2 relative" title="실시간 연동 중">
                 <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
                 <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
               </span>
@@ -121,7 +161,12 @@
               <span class="text-xl sm:text-2xl text-slate-400 font-light">원</span>
             </div>
 
-            <div class="mt-7 grid grid-cols-3 gap-2 sm:gap-4 sm:max-w-2xl">
+            <p class="mt-2 text-[11px] text-slate-400 font-mono-num">
+              부가세 <span id="totalVat" class="text-slate-300 font-bold">0</span>원 · 합계
+              <span id="totalWithVat" class="text-amber-200 font-bold">0</span>원
+            </p>
+
+            <div class="mt-7 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 sm:max-w-3xl">
               <div class="bg-slate-800/40 backdrop-blur rounded-xl p-3 sm:p-4 border border-slate-700/50">
                 <p class="text-[10px] sm:text-xs text-slate-400 font-semibold mb-1">📦 보관료</p>
                 <p class="font-mono-num text-sm sm:text-xl font-bold text-blue-300 break-all"><span id="totalStorage">0</span><span class="text-[10px] ml-1 text-slate-500 font-normal">원</span></p>
@@ -134,131 +179,68 @@
                 <p class="text-[10px] sm:text-xs text-slate-400 font-semibold mb-1">📥 입고비</p>
                 <p class="font-mono-num text-sm sm:text-xl font-bold text-rose-300 break-all"><span id="totalIn">0</span><span class="text-[10px] ml-1 text-slate-500 font-normal">원</span></p>
               </div>
+              <div class="bg-slate-800/40 backdrop-blur rounded-xl p-3 sm:p-4 border border-slate-700/50">
+                <p class="text-[10px] sm:text-xs text-slate-400 font-semibold mb-1">🧾 기타비용</p>
+                <p class="font-mono-num text-sm sm:text-xl font-bold text-amber-300 break-all"><span id="totalEtc">0</span><span class="text-[10px] ml-1 text-slate-500 font-normal">원</span></p>
+              </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 mb-6">
-        <a href="https://gusco1003-sudo.github.io/counton/" target="_blank" class="group block animate-fadeup delay-100">
-          <div class="card-glow-cyan relative overflow-hidden rounded-2xl border border-cyan-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-cyan-700/50 hover:scale-[1.005]">
-            <div class="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl"></div>
-            <div class="relative">
-              <div class="flex items-start justify-between mb-5">
-                <div>
-                  <div class="flex items-center gap-2 mb-1">
-                    <span class="text-xl">📦</span>
-                    <h3 class="font-display font-bold text-lg text-white">카운트온</h3>
-                  </div>
-                  <p class="text-[10px] text-slate-500">박스/낱개 정산 · 보관료 700원/PLT</p>
-                </div>
-              </div>
-              <div class="mb-5">
-                <p class="text-[10px] text-slate-400 font-semibold mb-1">월 매출</p>
-                <div class="flex items-baseline gap-2">
-                  <span id="contonRevenue" class="font-mono-num font-black text-3xl sm:text-4xl text-cyan-300 break-all">0</span>
-                  <span class="text-sm text-slate-500">원</span>
-                </div>
-              </div>
-              <div class="grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60">
-                <div><p class="text-[10px] text-slate-500 mb-0.5">보관</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonStorage">0</span></p></div>
-                <div><p class="text-[10px] text-slate-500 mb-0.5">출고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonOut">0</span></p></div>
-                <div><p class="text-[10px] text-slate-500 mb-0.5">입고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="contonIn">0</span></p></div>
-              </div>
-            </div>
-          </div>
-        </a>
+      <section id="clientGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6"></section>
 
-        <a href="https://gusco1003-sudo.github.io/forlight/" target="_blank" class="group block animate-fadeup delay-200">
-          <div class="card-glow-indigo relative overflow-hidden rounded-2xl border border-indigo-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-indigo-700/50 hover:scale-[1.005]">
-            <div class="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl"></div>
-            <div class="relative">
-              <div class="flex items-start justify-between mb-5">
-                <div>
-                  <div class="flex items-center gap-2 mb-1">
-                    <span class="text-xl">🏭</span>
-                    <h3 class="font-display font-bold text-lg text-white">포라이트</h3>
-                  </div>
-                  <p class="text-[10px] text-slate-500">B2B 파렛트 물류 · 보관료 900원/PLT</p>
-                </div>
-              </div>
-              <div class="mb-5">
-                <p class="text-[10px] text-slate-400 font-semibold mb-1">월 매출</p>
-                <div class="flex items-baseline gap-2">
-                  <span id="forlightRevenue" class="font-mono-num font-black text-3xl sm:text-4xl text-indigo-300 break-all">0</span>
-                  <span class="text-sm text-slate-500">원</span>
-                </div>
-              </div>
-              <div class="grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60">
-                <div><p class="text-[10px] text-slate-500 mb-0.5">보관</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightStorage">0</span></p></div>
-                <div><p class="text-[10px] text-slate-500 mb-0.5">출고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightOut">0</span></p></div>
-                <div><p class="text-[10px] text-slate-500 mb-0.5">입고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="forlightIn">0</span></p></div>
-              </div>
-            </div>
-          </div>
-        </a>
-
-        <a href="https://gusco1003-sudo.github.io/lunox/" target="_blank" class="group block animate-fadeup delay-300">
-          <div class="card-glow-purple relative overflow-hidden rounded-2xl border border-purple-900/30 bg-gradient-to-br from-slate-900/80 to-slate-900/30 p-6 transition hover:border-purple-700/50 hover:scale-[1.005]">
-            <div class="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
-            <div class="relative">
-              <div class="flex items-start justify-between mb-5">
-                <div>
-                  <div class="flex items-center gap-2 mb-1">
-                    <span class="text-xl">💡</span>
-                    <h3 class="font-display font-bold text-lg text-white">루녹스</h3>
-                  </div>
-                  <p class="text-[10px] text-slate-500">B2C 램프 물류 · 보관료 700원/PLT</p>
-                </div>
-              </div>
-              <div class="mb-5">
-                <p class="text-[10px] text-slate-400 font-semibold mb-1">월 매출</p>
-                <div class="flex items-baseline gap-2">
-                  <span id="lunoxRevenue" class="font-mono-num font-black text-3xl sm:text-4xl text-purple-300 break-all">0</span>
-                  <span class="text-sm text-slate-500">원</span>
-                </div>
-              </div>
-              <div class="grid grid-cols-3 gap-2 text-xs pt-4 border-t border-slate-800/60">
-                <div><p class="text-[10px] text-slate-500 mb-0.5">보관</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxStorage">0</span></p></div>
-                <div><p class="text-[10px] text-slate-500 mb-0.5">출고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxOut">0</span></p></div>
-                <div><p class="text-[10px] text-slate-500 mb-0.5">입고</p><p class="font-mono-num font-bold text-slate-200 text-xs break-all"><span id="lunoxIn">0</span></p></div>
-              </div>
-            </div>
-          </div>
-        </a>
-      </section>
-
-      <section class="mb-6 animate-fadeup delay-400">
+      <section class="mb-6 animate-fadeup">
         <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5">
           <div class="flex items-center justify-between mb-3">
             <h3 class="font-display font-bold text-sm">매출 비중</h3>
             <p id="ratioLabel" class="text-[10px] text-slate-500 font-mono-num">—</p>
           </div>
-          <div class="flex h-3 rounded-full overflow-hidden bg-slate-800">
-            <div id="ratioCounton" class="bg-gradient-to-r from-cyan-500 to-cyan-400 transition-all duration-700" style="width:33.3%"></div>
-            <div id="ratioForlight" class="bg-gradient-to-r from-indigo-500 to-indigo-400 transition-all duration-700" style="width:33.3%"></div>
-            <div id="ratioLunox" class="bg-gradient-to-r from-purple-500 to-purple-400 transition-all duration-700" style="width:33.4%"></div>
+          <div id="ratioBar" class="flex h-3 rounded-full overflow-hidden bg-slate-800"></div>
+          <div id="ratioLegend" class="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px]"></div>
+        </div>
+      </section>
+
+      <section class="mb-6 animate-fadeup">
+        <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6">
+          <div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+            <div>
+              <h3 class="font-display font-bold text-base">화주별 정산 상세</h3>
+              <p class="text-[10px] text-slate-500">선택 월 · 개별 정산 앱과 동일한 계산식</p>
+            </div>
+            <button onclick="exportCsv()" class="bg-slate-800 border border-slate-700 hover:border-cyan-600 rounded-lg px-3 py-2 text-[11px] font-bold text-slate-200 transition">CSV 내보내기</button>
           </div>
-          <div class="flex justify-between mt-2 text-[10px]">
-            <span class="text-cyan-400 font-mono-num font-bold">카운트온 <span id="ratioCountonText">0%</span></span>
-            <span class="text-indigo-400 font-mono-num font-bold">포라이트 <span id="ratioForlightText">0%</span></span>
-            <span class="text-purple-400 font-mono-num font-bold">루녹스 <span id="ratioLunoxText">0%</span></span>
+          <div class="overflow-x-auto -mx-2 px-2">
+            <table class="num-table w-full text-[11px] sm:text-xs font-mono-num">
+              <thead>
+                <tr class="text-left">
+                  <th class="text-left">화주</th>
+                  <th class="text-right">보관료</th>
+                  <th class="text-right">입고비</th>
+                  <th class="text-right">출고비</th>
+                  <th class="text-right">기타비용</th>
+                  <th class="text-right">공급가액</th>
+                  <th class="text-right">부가세</th>
+                  <th class="text-right">합계</th>
+                  <th class="text-center">연동</th>
+                  <th class="text-center">근거</th>
+                </tr>
+              </thead>
+              <tbody id="detailBody"></tbody>
+              <tfoot id="detailFoot" class="font-bold text-white"></tfoot>
+            </table>
           </div>
         </div>
       </section>
 
-      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 animate-fadeup delay-400">
+      <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 animate-fadeup">
         <div class="lg:col-span-2 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 sm:p-6">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex items-start justify-between mb-4 gap-3 flex-wrap">
             <div>
               <h3 class="font-display font-bold text-base">월별 매출 추이</h3>
               <p class="text-[10px] text-slate-500">선택 월 기준 최근 6개월</p>
             </div>
-            <div class="flex items-center gap-3 text-[10px]">
-              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span><span class="text-slate-400 font-semibold">카운트온</span></span>
-              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span><span class="text-slate-400 font-semibold">포라이트</span></span>
-              <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span><span class="text-slate-400 font-semibold">루녹스</span></span>
-            </div>
+            <div id="trendLegend" class="flex items-center gap-3 text-[10px] flex-wrap justify-end"></div>
           </div>
           <div class="h-56 sm:h-64">
             <canvas id="trendChart"></canvas>
@@ -282,101 +264,813 @@
   </div>
 
   <script>
-    const FIREBASE_COUNTON  = "https://ts3pl-982ef-default-rtdb.firebaseio.com/counton_data.json";
-    const FIREBASE_FORLIGHT = "https://ts3pl-982ef-default-rtdb.firebaseio.com/forlight_data.json";
-    const FIREBASE_LUNOX    = "https://ts3pl-982ef-default-rtdb.firebaseio.com/lunox_data.json"; 
-    
+    /* ==========================================================================
+       TS3PL 통합 매출 대시보드
+       --------------------------------------------------------------------------
+       화주별 개별 정산 앱 2종의 데이터 구조를 하나로 합친 버전.
+
+       schema: 'wms'        → 카운트온 / 포라이트 / 루녹스
+                              { inventory, logs[{time,type,fee,plt,box,pcs,itemId}],
+                                dailyPltLog, manualStorageLog }
+                              보관료 = 일별 PLT × 고정단가, 입출고비 = 각 로그의 fee
+
+       schema: 'settlement' → SB뉴트리션 / 나인블랙키친
+                              { events[...], costs[{date,desc,amount}], settings{...} }
+                              보관료/입출고비/기타비용을 settings의 단가로 계산.
+                              단가는 Firebase의 settings를 그대로 읽으므로 화주 앱에서
+                              요금을 바꾸면 대시보드도 자동으로 따라간다.
+
+       schema: 'orders'     → 정수공작
+                              { 'YYYY-MM-DD': { files: { 파일명: 건수 } } }
+                              건수가 있는 날마다 배차비 + (건수 × 건당 단가).
+
+       날짜는 전부 한국시간(KST) 기준으로 계산한다. 보는 사람의 기기 시간대가
+       무엇이든 동일한 결과가 나온다.
+
+       ★ 화주를 추가하려면 아래 CLIENTS 배열에 항목 하나만 넣으면 된다.
+         카드 / 비중바 / 상세표 / 차트 / 월 선택기가 전부 자동으로 늘어난다.
+       ========================================================================== */
+
+    const FIREBASE_BASE = "https://ts3pl-982ef-default-rtdb.firebaseio.com";
     const ADMIN_PW = "4656";
 
-    let countonData = null, forlightData = null, lunoxData = null;
+    const CLIENTS = [
+      {
+        key: 'counton', name: '카운트온', emoji: '📦',
+        accent: '#22d3ee', accentRgb: '34,211,238',
+        schema: 'wms', path: 'counton_data',
+        storageRate: 700, pltMode: 'box', vatRate: 0.1,
+        desc: '박스/낱개 정산 · 보관료 700원/PLT',
+        link: 'https://gusco1003-sudo.github.io/counton/'
+      },
+      {
+        key: 'forlight', name: '포라이트', emoji: '🏭',
+        accent: '#818cf8', accentRgb: '129,140,248',
+        schema: 'wms', path: 'forlight_data',
+        storageRate: 900, pltMode: 'pcs', vatRate: 0.1,
+        desc: 'B2B 파렛트 물류 · 보관료 900원/PLT',
+        link: 'https://gusco1003-sudo.github.io/forlight/'
+      },
+      {
+        key: 'lunox', name: '루녹스', emoji: '💡',
+        accent: '#a855f7', accentRgb: '168,85,247',
+        schema: 'wms', path: 'lunox_data',
+        storageRate: 700, pltMode: 'box', vatRate: 0.1,
+        desc: 'B2C 램프 물류 · 보관료 700원/PLT',
+        link: 'https://gusco1003-sudo.github.io/lunox/'
+      },
+      {
+        key: 'sbnutrition', name: 'SB뉴트리션', emoji: '💊',
+        accent: '#34d399', accentRgb: '52,211,153',
+        schema: 'settlement', path: 'sbnutrition',
+        defaults: { unloadFee: 5000, storageFee: 900, vatRate: 0.1 },
+        desc: 'PLT 하차비 정산 · 보관료 900원/PLT',
+        link: 'https://gusco1003-sudo.github.io/SB-nutrition/'
+      },
+      {
+        key: 'nineblackkitchen', name: '나인블랙키친', emoji: '🍳',
+        accent: '#fbbf24', accentRgb: '251,191,36',
+        schema: 'settlement', path: 'nineblackkitchen',
+        defaults: {
+          storageFee: 800,
+          containerFee: { '20ft': 250000, '40ft': 0 },
+          outboundFee: { korean: 13000, general: 18000, courier: 5000 },
+          vatRate: 0.1
+        },
+        desc: '컨테이너 하차 · 파렛트/택배 출고',
+        link: 'https://gusco1003-sudo.github.io/9black-kitchen/'
+      },
+      {
+        key: 'jeongsu', name: '정수공작', emoji: '🥐',
+        accent: '#f472b6', accentRgb: '244,114,182',
+        schema: 'orders', path: 'jeongsu/records',
+        pickupFee: 30000, perItemFee: 2400, vatRate: 0.1,
+        desc: '택배 출고 정산 · 배차 30,000원/일 + 건당 2,400원',
+        link: 'https://gusco1003-sudo.github.io/jeongsu-settlement/'
+      }
+      /* ── 화주 추가 슬롯 ────────────────────────────────────────────────
+      ,{
+        key: '<firebase 경로>', name: '<화주명>', emoji: '🧴',
+        accent: '#38bdf8', accentRgb: '56,189,248',
+        schema: 'settlement',            // 'wms' | 'settlement' | 'orders'
+        path: '<firebase 경로>',
+        defaults: { storageFee: 0, unloadFee: 0, vatRate: 0.1 },
+        desc: '<카드 설명>',
+        link: '<개별 앱 주소>'
+      }
+      ──────────────────────────────────────────────────────────────── */
+    ];
+
+    const store = {};      // key -> 원본 데이터
+    const syncErr = {};    // key -> 오류 메시지 (없으면 null)
+    let calcCache = {};    // "key|month" -> 계산 결과
     let currentMonth = "";
     let trendChart = null, breakdownChart = null;
+    let loading = false;
 
-    function getFormattedDate(d = new Date()) {
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    /* ---------- 날짜: 전부 한국시간(KST, UTC+9) 기준 ----------
+       보는 사람의 기기 시간대가 무엇이든 항상 한국 날짜로 계산한다.
+       날짜 문자열은 UTC 자정으로 파싱하므로 서머타임/시간대 영향을 받지 않는다. */
+    const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
+    function kstToday()      { return new Date(Date.now() + KST_OFFSET_MS).toISOString().slice(0, 10); }
+    function kstTodayMonth() { return kstToday().slice(0, 7); }
+    function parseDay(s)     { return new Date(s + 'T00:00:00Z'); }
+    function fmtDay(d)       { return d.toISOString().slice(0, 10); }
+    function addDay(d, n)    { d.setUTCDate(d.getUTCDate() + n); return d; }
+    function daysBetween(a, b) { return Math.round((parseDay(a) - parseDay(b)) / 86400000); }
+    function lastDayOfMonth(y, m) { return new Date(Date.UTC(y, m, 0)).getUTCDate(); }
+    function isValidDateKey(k) { return /^\d{4}-\d{2}-\d{2}$/.test(k); }
+
+    /* ---------- 공통 유틸 ---------- */
+
+    function toArray(v) {
+      if (!v) return [];
+      return (Array.isArray(v) ? v : Object.values(v)).filter(Boolean);
+    }
+    function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
+    function comma(n) { return Math.round(n).toLocaleString('ko-KR'); }
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, c => (
+        { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]
+      ));
+    }
+    function clientOf(key) { return CLIENTS.find(c => c.key === key); }
+
+    // 해당 월의 정산 구간(한국 기준). 미래 월이면 null, 이번 달이면 오늘까지.
+    function monthRange(month) {
+      const [y, m] = month.split('-').map(Number);
+      if (!y || !m) return null;
+      const todayStr = kstToday();
+      const todayMonth = todayStr.slice(0, 7);
+      if (month > todayMonth) return null;
+      const endDay = (month === todayMonth) ? Number(todayStr.slice(8, 10)) : lastDayOfMonth(y, m);
+      return { from: `${month}-01`, to: `${month}-${String(endDay).padStart(2,'0')}`, endDay };
     }
 
-    // 💡 [개선된 데이터 병합 엔진]
-    // 개별 정산 시스템과 동일하게 1. 수동 조정값 최우선 반영, 2. 출고량 중복합산 원천 차단
-    function buildDailyStorage(month, dataObj, isForlight) {
-        if (!dataObj || !dataObj.dailyPltLog) return {};
-        const series = {};
-        const [year, mon] = month.split('-').map(Number);
-        const today = new Date();
-        const todayMonthStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
-        const lastDayOfMonth = new Date(year, mon, 0).getDate();
+    /* ---------- WMS 스키마 (카운트온 / 포라이트 / 루녹스) ---------- */
 
-        let endDay = (month > todayMonthStr) ? 0 : (month === todayMonthStr ? today.getDate() : lastDayOfMonth);
+    // 1순위: 관리자가 직접 수정한 manualStorageLog, 2순위: 순수 마감재고.
+    // 출고량을 다시 더하지 않으므로 중복 합산이 발생하지 않는다.
+    function buildDailyStorage(month, dataObj, isPcsMode) {
+      if (!dataObj || !dataObj.dailyPltLog) return {};
+      const series = {};
+      const range = monthRange(month);
+      if (!range) return {};
+      const endDay = range.endDay;
 
-        const monthStart = `${month}-01`;
-        let runningInventory = null;
-        
-        const priorDates = Object.keys(dataObj.dailyPltLog).filter(d => d < monthStart).sort();
-        if (priorDates.length) runningInventory = dataObj.dailyPltLog[priorDates[priorDates.length - 1]];
+      const monthStart = `${month}-01`;
+      let runningInventory = null;
 
-        for (let day = 1; day <= endDay; day++) {
-            const dStr = `${month}-${String(day).padStart(2,'0')}`;
-            
-            let outPlt = 0;
-            let inPlt = 0;
-            
-            if (dataObj.logs) {
-                const logsArr = Array.isArray(dataObj.logs) ? dataObj.logs : Object.values(dataObj.logs);
-                logsArr.forEach(l => {
-                    if (l && l.time && l.time.startsWith(dStr)) {
-                        const type = String(l.type || '').toUpperCase();
-                        let qty = 0;
-                        if (isForlight) {
-                            qty = Number(l.plt || 0) + (Number(l.pcs || 0) / 120);
-                        } else {
-                            let itemPltStd = 40;
-                            if (dataObj.inventory) {
-                                const invArr = Array.isArray(dataObj.inventory) ? dataObj.inventory : Object.values(dataObj.inventory);
-                                const item = invArr.find(i => i.id === l.itemId);
-                                if (item && item.pltStd) itemPltStd = Number(item.pltStd);
-                            }
-                            qty = Number(l.plt || 0) + (Number(l.box || 0) / itemPltStd);
-                        }
+      const priorDates = Object.keys(dataObj.dailyPltLog).filter(d => d < monthStart).sort();
+      if (priorDates.length) runningInventory = dataObj.dailyPltLog[priorDates[priorDates.length - 1]];
 
-                        if (type.includes('OUT') || type === '출고' || type === 'OUTGO') {
-                            outPlt += qty;
-                        } else if (type.includes('IN') || type === '입고' || type.includes('IN_40FT')) {
-                            inPlt += qty;
-                        }
-                    }
-                });
+      const logsArr = toArray(dataObj.logs);
+      const invArr = toArray(dataObj.inventory);
+
+      for (let day = 1; day <= endDay; day++) {
+        const dStr = `${month}-${String(day).padStart(2,'0')}`;
+        let outPlt = 0, inPlt = 0;
+
+        logsArr.forEach(l => {
+          if (l && l.time && String(l.time).startsWith(dStr)) {
+            const type = String(l.type || '').toUpperCase();
+            let qty = 0;
+            if (isPcsMode) {
+              qty = num(l.plt) + (num(l.pcs) / 120);
+            } else {
+              let itemPltStd = 40;
+              const item = invArr.find(i => i.id === l.itemId);
+              if (item && item.pltStd) itemPltStd = num(item.pltStd) || 40;
+              qty = num(l.plt) + (num(l.box) / itemPltStd);
             }
+            if (type.includes('OUT') || type === '출고' || type === 'OUTGO') outPlt += qty;
+            else if (type.includes('IN') || type === '입고' || type.includes('IN_40FT')) inPlt += qty;
+          }
+        });
 
-            // 마감 재고 추적
-            if (dataObj.dailyPltLog[dStr] !== undefined && dataObj.dailyPltLog[dStr] !== null) {
-                runningInventory = dataObj.dailyPltLog[dStr];
-            } else if (runningInventory !== null) {
-                runningInventory = runningInventory + inPlt - outPlt;
-            }
-            
-            // 💡 [핵심 수정 로직]
-            // 1순위: 관리자가 직접 수정한 데이터(manualStorageLog)가 존재하면 그 값을 그대로 사용
-            // 2순위: 수정한 값이 없으면 순수 마감재고(runningInventory)를 사용. 출고량(+ outPlt) 더하는 로직 완전 삭제
-            if (dataObj.manualStorageLog && dataObj.manualStorageLog[dStr] !== undefined) {
-                series[dStr] = dataObj.manualStorageLog[dStr];
-            } else if (runningInventory !== null) {
-                series[dStr] = Math.ceil(runningInventory);
-            }
+        if (dataObj.dailyPltLog[dStr] !== undefined && dataObj.dailyPltLog[dStr] !== null) {
+          runningInventory = dataObj.dailyPltLog[dStr];
+        } else if (runningInventory !== null) {
+          runningInventory = runningInventory + inPlt - outPlt;
         }
-        return series;
+
+        if (dataObj.manualStorageLog && dataObj.manualStorageLog[dStr] !== undefined) {
+          series[dStr] = dataObj.manualStorageLog[dStr];
+        } else if (runningInventory !== null) {
+          series[dStr] = Math.ceil(runningInventory);
+        }
+      }
+      return series;
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
-      const inp = document.getElementById('pwInput');
-      inp.addEventListener('keypress', e => { if (e.key === 'Enter') confirmPassword(); });
-      inp.focus();
+    function calcWms(client, month) {
+      const data = store[client.key];
+      let storage = 0, inFee = 0, outFee = 0;
+      if (!data) return { storage, inFee, outFee, etc: 0, subtotal: 0, vat: 0, total: 0 };
 
-      setInterval(() => {
-        if (!document.getElementById('appContent').classList.contains('hidden')) {
-          refreshData(false);
+      const dailyStorage = buildDailyStorage(month, data, client.pltMode === 'pcs');
+      Object.values(dailyStorage).forEach(plt => { storage += num(plt) * client.storageRate; });
+
+      toArray(data.logs).forEach(l => {
+        if (!l || !l.time || !String(l.time).startsWith(month)) return;
+        const fee = num(l.fee);
+        const type = String(l.type || '').toUpperCase().trim();
+        if (type.startsWith('IN') || type === '입고') inFee += fee;
+        else outFee += fee;
+      });
+
+      const subtotal = storage + inFee + outFee;
+      const vatRate = client.vatRate ?? 0.1;
+      return { storage, inFee, outFee, etc: 0, subtotal, vat: subtotal * vatRate, total: subtotal };
+    }
+
+    /* ---------- 정산 스키마 (SB뉴트리션 / 나인블랙키친) ---------- */
+
+    function settingsOf(client) {
+      const data = store[client.key] || {};
+      return Object.assign({}, client.defaults || {}, data.settings || {});
+    }
+
+    // 재고 증감. 택배 출고는 건수가 아니라 deductPlt 만큼만 차감한다.
+    function stockDelta(e) {
+      if (!e) return 0;
+      if (e.type === 'in') return num(e.qty);
+      if (e.method === 'courier') return -num(e.deductPlt);
+      return -num(e.qty);
+    }
+
+    // 단가표에 어떤 키가 있는지로 화주별 과금 방식을 자동 판별한다.
+    function eventFee(settings, e) {
+      if (!e) return 0;
+      if (e.type === 'in') {
+        if (settings.containerFee) {                       // 컨테이너 회차당 고정비
+          const size = e.containerSize || '20ft';
+          return num(settings.containerFee[size]);
         }
-      }, 10000); 
-    });
+        return num(e.qty) * num(settings.unloadFee);       // PLT당 하차비
+      }
+      if (settings.outboundFee) {
+        if (e.method === 'courier') return num(e.count) * num(settings.outboundFee.courier);
+        return num(e.qty) * num(settings.outboundFee[e.method]);
+      }
+      return num(e.qty) * num(settings.unloadFee);
+    }
+
+    // 개별 정산 앱의 calcStorage()를 그대로 옮긴 것. 규칙은 나인블랙키친 방식으로 통일:
+    //   · 입고 당일부터 보관료를 부과한다.
+    //   · 출고 당일은 차감 전 잔고로 보관료를 부과하고, 재고 차감은 다음날부터 적용한다.
+    function calcStorageSettlement(client, fromDate, toDate) {
+      const data = store[client.key];
+      const settings = settingsOf(client);
+      const events = toArray(data && data.events);
+      const inDeltas = {}, outDeltas = {};
+
+      events.forEach(e => {
+        if (!e || !e.date) return;
+        const d = stockDelta(e);
+        if (!d) return;
+        if (d > 0) inDeltas[e.date] = (inDeltas[e.date] || 0) + d;
+        else outDeltas[e.date] = (outDeltas[e.date] || 0) + d;
+      });
+
+      const dates = Object.keys(Object.assign({}, inDeltas, outDeltas)).sort();
+      if (dates.length === 0) return { total: 0, plDays: 0, segments: [] };
+
+      const rate = num(settings.storageFee);
+
+      let cur = parseDay(dates[0]);
+      const end = parseDay(toDate);
+      let balance = 0;
+      const segments = [];
+      let segBalance = null, segStart = null, prevDstr = null;
+      let guard = 0;
+
+      while (cur <= end && guard++ < 20000) {
+        const dstr = fmtDay(cur);
+
+        // 입고분은 당일 보관료에 바로 반영
+        if (inDeltas[dstr]) balance += inDeltas[dstr];
+        if (balance < 0) balance = 0;
+
+        if (dstr >= fromDate && dstr <= toDate) {
+          if (segBalance === null) { segBalance = balance; segStart = dstr; }
+          else if (balance !== segBalance) {
+            segments.push({ balance: segBalance, start: segStart, end: prevDstr });
+            segBalance = balance; segStart = dstr;
+          }
+          prevDstr = dstr;
+        }
+
+        // 출고분은 당일 보관료 계산 이후에 반영 (차감은 다음날부터)
+        if (outDeltas[dstr]) balance += outDeltas[dstr];
+        if (balance < 0) balance = 0;
+
+        addDay(cur, 1);
+      }
+      if (segBalance !== null) segments.push({ balance: segBalance, start: segStart, end: prevDstr });
+
+      segments.forEach(s => {
+        s.days = daysBetween(s.end, s.start) + 1;
+        s.fee = s.balance * s.days * rate;
+      });
+
+      return {
+        total: segments.reduce((sum, s) => sum + s.fee, 0),
+        plDays: segments.reduce((sum, s) => sum + s.balance * s.days, 0),
+        segments
+      };
+    }
+
+    /* ---------- 건당 정산 스키마 (정수공작) ---------- */
+    // { 'YYYY-MM-DD': { files: { 파일명: 건수 } } }
+    // 건수가 1건이라도 있는 날마다 배차비가 발생하고, 여기에 건당 단가를 더한다.
+    function calcOrders(client, month) {
+      const data = store[client.key] || {};
+      let days = 0, count = 0, pickup = 0, item = 0;
+
+      Object.keys(data).forEach(d => {
+        if (!isValidDateKey(d) || !d.startsWith(month)) return;
+        const files = (data[d] && data[d].files) || {};
+        const c = Object.values(files).reduce((a, b) => a + num(b), 0);
+        if (c <= 0) return;
+        days++; count += c;
+        pickup += num(client.pickupFee);
+        item += c * num(client.perItemFee);
+      });
+
+      const outFee = pickup + item;
+      const vatRate = client.vatRate ?? 0.1;
+      return {
+        storage: 0, inFee: 0, outFee, etc: 0,
+        subtotal: outFee, vat: outFee * vatRate, total: outFee,
+        note: days ? `${days}일 배차 · ${count.toLocaleString('ko-KR')}건` : ''
+      };
+    }
+
+    function calcSettlement(client, month) {
+      const empty = { storage: 0, inFee: 0, outFee: 0, etc: 0, subtotal: 0, vat: 0, total: 0 };
+      const data = store[client.key];
+      const range = monthRange(month);
+      if (!data || !range) return empty;
+
+      const settings = settingsOf(client);
+      const events = toArray(data.events);
+      const inRange = events.filter(e => e.date >= range.from && e.date <= range.to);
+
+      let inFee = 0, outFee = 0;
+      inRange.forEach(e => {
+        const fee = eventFee(settings, e);
+        if (e.type === 'in') inFee += fee; else outFee += fee;
+      });
+
+      const storage = calcStorageSettlement(client, range.from, range.to).total;
+      const etc = toArray(data.costs)
+        .filter(c => c.date >= range.from && c.date <= range.to)
+        .reduce((s, c) => s + num(c.amount), 0);
+
+      const subtotal = storage + inFee + outFee + etc;
+      const vatRate = settings.vatRate ?? 0.1;
+      return { storage, inFee, outFee, etc, subtotal, vat: subtotal * vatRate, total: subtotal };
+    }
+
+    function calcClient(client, month) {
+      const cacheKey = client.key + '|' + month;
+      if (calcCache[cacheKey]) return calcCache[cacheKey];
+      const r = client.schema === 'wms'    ? calcWms(client, month)
+              : client.schema === 'orders' ? calcOrders(client, month)
+              :                              calcSettlement(client, month);
+      calcCache[cacheKey] = r;
+      return r;
+    }
+
+    /* ---------- 데이터 로드 ---------- */
+
+    async function loadData(showLoader) {
+      if (showLoader) {
+        document.getElementById('loader').classList.remove('hidden');
+        document.getElementById('loader').classList.add('flex');
+      }
+
+      const noCache = '?t=' + Date.now();
+      const results = await Promise.allSettled(
+        CLIENTS.map(c => fetch(`${FIREBASE_BASE}/${c.path}.json${noCache}`))
+      );
+
+      for (let i = 0; i < CLIENTS.length; i++) {
+        const c = CLIENTS[i];
+        const r = results[i];
+        let json = null, err = null;
+
+        if (r.status !== 'fulfilled') {
+          err = r.reason && r.reason.message ? r.reason.message : '네트워크 오류';
+        } else if (!r.value.ok) {
+          err = 'HTTP ' + r.value.status;
+        } else {
+          try { json = await r.value.json(); }
+          catch (e) { err = '응답 해석 실패'; }
+          // Firebase 권한 오류는 200에 {error:"..."} 형태로 오기도 한다.
+          if (json && typeof json === 'object' && json.error) { err = String(json.error); json = null; }
+        }
+
+        syncErr[c.key] = err;
+        store[c.key] = (json && typeof json === 'object') ? json : {};
+
+        if (c.schema === 'wms') patchDailyPlt(store[c.key], c.pltMode === 'pcs');
+      }
+
+      calcCache = {};
+
+      if (showLoader) {
+        document.getElementById('loader').classList.add('hidden');
+        document.getElementById('loader').classList.remove('flex');
+      }
+    }
+
+    // 오늘자 마감재고가 아직 기록되지 않았으면 현재 재고에서 만들어 채운다.
+    function patchDailyPlt(dataObj, isPcsMode) {
+      if (!dataObj) return;
+      if (!dataObj.dailyPltLog) dataObj.dailyPltLog = {};
+      const todayStr = kstToday();
+      if (dataObj.dailyPltLog[todayStr] !== undefined) return;
+
+      let plt = 0;
+      toArray(dataObj.inventory).forEach(i => {
+        if (i && i.id !== 'in_40ft') {
+          if (isPcsMode) plt += Math.ceil((num(i.plt) * 120 + num(i.pcs)) / 120);
+          else plt += Math.ceil((parseInt(i.box) || 0) / (parseInt(i.pltStd) || 1));
+        }
+      });
+      dataObj.dailyPltLog[todayStr] = plt;
+    }
+
+    /* ---------- 월 선택기 ---------- */
+
+    function buildMonthSelector() {
+      const months = new Set([currentMonth]);
+      CLIENTS.forEach(c => {
+        const d = store[c.key];
+        if (!d) return;
+        if (c.schema === 'wms') {
+          toArray(d.logs).forEach(l => { if (l.time) months.add(String(l.time).substring(0, 7)); });
+          Object.keys(d.dailyPltLog || {}).forEach(x => months.add(x.substring(0, 7)));
+          Object.keys(d.manualStorageLog || {}).forEach(x => months.add(x.substring(0, 7)));
+        } else if (c.schema === 'orders') {
+          Object.keys(d).forEach(x => { if (isValidDateKey(x)) months.add(x.substring(0, 7)); });
+        } else {
+          toArray(d.events).forEach(e => { if (e.date) months.add(String(e.date).substring(0, 7)); });
+          toArray(d.costs).forEach(x => { if (x.date) months.add(String(x.date).substring(0, 7)); });
+        }
+      });
+
+      const sorted = Array.from(months).filter(Boolean).sort().reverse();
+      const selector = document.getElementById('monthSelector');
+      const currentVal = selector.value || currentMonth;
+      selector.innerHTML = sorted.map(m => {
+        const [y, mm] = m.split('-');
+        return `<option value="${m}" ${m === currentVal ? 'selected' : ''}>${y}년 ${parseInt(mm)}월</option>`;
+      }).join('');
+      if (!selector.value && sorted.length) selector.value = sorted[0];
+    }
+
+    /* ---------- 렌더링 ---------- */
+
+    function buildClientCards() {
+      document.getElementById('clientGrid').innerHTML = CLIENTS.map((c, i) => {
+        const inner = `
+          <div class="client-card" style="--accent:${c.accent}; --accent-rgb:${c.accentRgb}">
+            <div class="client-card__blob"></div>
+            <div class="relative">
+              <div class="flex items-start justify-between mb-5 gap-2">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="text-xl">${c.emoji}</span>
+                    <h3 class="font-display font-bold text-lg text-white truncate">${esc(c.name)}</h3>
+                  </div>
+                  <p class="text-[10px] text-slate-500">${esc(c.desc || '')}</p>
+                </div>
+                <span id="badge-${c.key}" class="text-[9px] font-bold px-1.5 py-0.5 rounded border border-slate-700 text-slate-500 flex-shrink-0">—</span>
+              </div>
+              <div class="mb-5">
+                <p class="text-[10px] text-slate-400 font-semibold mb-1">월 매출</p>
+                <div class="flex items-baseline gap-2">
+                  <span id="rev-${c.key}" class="client-card__value font-mono-num font-black text-3xl sm:text-4xl break-all">0</span>
+                  <span class="text-sm text-slate-500">원</span>
+                </div>
+                <p id="note-${c.key}" class="text-[10px] text-slate-500 font-mono-num mt-1 min-h-[1em]"></p>
+              </div>
+              <div class="grid grid-cols-4 gap-2 text-xs pt-4 border-t border-slate-800/60">
+                <div><p class="text-[10px] text-slate-500 mb-0.5">보관</p><p class="font-mono-num font-bold text-slate-200 text-[11px] break-all"><span id="sto-${c.key}">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">입고</p><p class="font-mono-num font-bold text-slate-200 text-[11px] break-all"><span id="in-${c.key}">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">출고</p><p class="font-mono-num font-bold text-slate-200 text-[11px] break-all"><span id="out-${c.key}">0</span></p></div>
+                <div><p class="text-[10px] text-slate-500 mb-0.5">기타</p><p class="font-mono-num font-bold text-slate-200 text-[11px] break-all"><span id="etc-${c.key}">0</span></p></div>
+              </div>
+            </div>
+          </div>`;
+        const delay = `style="animation-delay:${(i + 1) * 0.08}s"`;
+        return c.link
+          ? `<a href="${esc(c.link)}" target="_blank" rel="noopener" class="group block animate-fadeup" ${delay}>${inner}</a>`
+          : `<div class="animate-fadeup" ${delay}>${inner}</div>`;
+      }).join('');
+
+      document.getElementById('trendLegend').innerHTML = CLIENTS.map(c =>
+        `<span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full" style="background:${c.accent}"></span><span class="text-slate-400 font-semibold">${esc(c.name)}</span></span>`
+      ).join('');
+
+      document.getElementById('ratioBar').innerHTML = CLIENTS.map(c =>
+        `<div id="ratio-${c.key}" class="ratio-seg" style="--accent:${c.accent}; width:${(100 / CLIENTS.length).toFixed(2)}%"></div>`
+      ).join('');
+
+      document.getElementById('ratioLegend').innerHTML = CLIENTS.map(c =>
+        `<span class="font-mono-num font-bold" style="color:${c.accent}">${esc(c.name)} <span id="ratioText-${c.key}">0%</span></span>`
+      ).join('');
+    }
+
+    function render() {
+      currentMonth = document.getElementById('monthSelector').value || currentMonth;
+      const rows = CLIENTS.map(c => ({ client: c, m: calcClient(c, currentMonth) }));
+
+      const sum = k => rows.reduce((s, r) => s + r.m[k], 0);
+      const tStorage = sum('storage'), tIn = sum('inFee'), tOut = sum('outFee'), tEtc = sum('etc');
+      const tSub = sum('subtotal'), tVat = sum('vat');
+
+      document.getElementById('totalRevenue').innerText = comma(tSub);
+      document.getElementById('totalStorage').innerText = comma(tStorage);
+      document.getElementById('totalOut').innerText     = comma(tOut);
+      document.getElementById('totalIn').innerText      = comma(tIn);
+      document.getElementById('totalEtc').innerText     = comma(tEtc);
+      document.getElementById('totalVat').innerText     = comma(tVat);
+      document.getElementById('totalWithVat').innerText = comma(tSub + tVat);
+
+      rows.forEach(({ client: c, m }) => {
+        document.getElementById('rev-' + c.key).innerText = comma(m.subtotal);
+        document.getElementById('sto-' + c.key).innerText = comma(m.storage);
+        document.getElementById('in-'  + c.key).innerText = comma(m.inFee);
+        document.getElementById('out-' + c.key).innerText = comma(m.outFee);
+        document.getElementById('etc-' + c.key).innerText = comma(m.etc);
+        document.getElementById('note-' + c.key).innerText = m.note || '';
+
+        const badge = document.getElementById('badge-' + c.key);
+        if (syncErr[c.key]) {
+          badge.textContent = '연동실패';
+          badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded border border-rose-800 text-rose-400 flex-shrink-0';
+          badge.title = syncErr[c.key];
+        } else {
+          badge.textContent = '연동';
+          badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-900 text-emerald-500 flex-shrink-0';
+          badge.title = '정상 동기화';
+        }
+      });
+
+      // 매출 비중
+      rows.forEach(({ client: c, m }) => {
+        const pct = tSub > 0 ? (m.subtotal / tSub) * 100 : (100 / CLIENTS.length);
+        document.getElementById('ratio-' + c.key).style.width = pct + '%';
+        document.getElementById('ratioText-' + c.key).innerText = pct.toFixed(1) + '%';
+      });
+      document.getElementById('ratioLabel').innerText = tSub > 0 ? `${comma(tSub / 10000)}만원 기준` : '데이터 없음';
+
+      // 상세 표
+      document.getElementById('detailBody').innerHTML = rows.map(({ client: c, m }) => `
+        <tr>
+          <td class="text-left"><span class="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style="background:${c.accent}"></span>${esc(c.name)}</td>
+          <td class="text-right text-slate-300">${comma(m.storage)}</td>
+          <td class="text-right text-slate-300">${comma(m.inFee)}</td>
+          <td class="text-right text-slate-300">${comma(m.outFee)}</td>
+          <td class="text-right text-slate-300">${comma(m.etc)}</td>
+          <td class="text-right text-white font-bold">${comma(m.subtotal)}</td>
+          <td class="text-right text-slate-400">${comma(m.vat)}</td>
+          <td class="text-right text-amber-200 font-bold">${comma(m.subtotal + m.vat)}</td>
+          <td class="text-center">${syncErr[c.key] ? '<span class="text-rose-400" title="' + esc(syncErr[c.key]) + '">실패</span>' : '<span class="text-emerald-500">정상</span>'}</td>
+          <td class="text-center"><button onclick="openDetail('${c.key}')" class="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">근거</button></td>
+        </tr>`).join('');
+
+      document.getElementById('detailFoot').innerHTML = `
+        <tr class="border-t border-slate-700">
+          <td class="text-left">합계</td>
+          <td class="text-right">${comma(tStorage)}</td>
+          <td class="text-right">${comma(tIn)}</td>
+          <td class="text-right">${comma(tOut)}</td>
+          <td class="text-right">${comma(tEtc)}</td>
+          <td class="text-right">${comma(tSub)}</td>
+          <td class="text-right">${comma(tVat)}</td>
+          <td class="text-right text-amber-200">${comma(tSub + tVat)}</td>
+          <td></td>
+          <td></td>
+        </tr>`;
+
+      // 연동 실패 배너
+      const failed = CLIENTS.filter(c => syncErr[c.key]);
+      const warn = document.getElementById('syncWarning');
+      if (failed.length) {
+        warn.classList.remove('hidden');
+        document.getElementById('syncWarningDetail').innerText =
+          failed.map(c => `${c.name}: ${syncErr[c.key]}`).join('  ·  ') + '  — 해당 화주 금액은 0원으로 표시됩니다.';
+      } else {
+        warn.classList.add('hidden');
+      }
+
+      const [y, mm] = currentMonth.split('-');
+      document.getElementById('currentMonthLabel').innerText = `${y}.${mm}`;
+      const kst = new Date(Date.now() + KST_OFFSET_MS);
+      document.getElementById('lastUpdate').innerText =
+        `${String(kst.getUTCHours()).padStart(2,'0')}:${String(kst.getUTCMinutes()).padStart(2,'0')}:${String(kst.getUTCSeconds()).padStart(2,'0')} KST`;
+
+      drawCharts(rows);
+    }
+
+    const tickFmt = v => v >= 100000000 ? (v/100000000).toFixed(1)+'억'
+                      : v >= 10000000 ? (v/10000000).toFixed(1)+'천만'
+                      : v >= 10000 ? (v/10000).toFixed(0)+'만'
+                      : v >= 1000 ? (v/1000).toFixed(0)+'K' : v;
+
+    function drawCharts(rows) {
+      const [yy, mm] = currentMonth.split('-').map(Number);
+      const months = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(Date.UTC(yy, mm - 1 - i, 1));
+        months.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`);
+      }
+
+      if (trendChart) trendChart.destroy();
+      trendChart = new Chart(document.getElementById('trendChart'), {
+        type: 'line',
+        data: {
+          labels: months.map(m => parseInt(m.split('-')[1]) + '월'),
+          datasets: CLIENTS.map(c => ({
+            label: c.name,
+            data: months.map(mo => calcClient(c, mo).subtotal),
+            borderColor: c.accent,
+            backgroundColor: `rgba(${c.accentRgb},0.10)`,
+            fill: true, tension: 0.4, borderWidth: 2.5,
+            pointRadius: 3, pointHoverRadius: 7,
+            pointBackgroundColor: c.accent, pointBorderColor: '#0e1117', pointBorderWidth: 2
+          }))
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(148,163,184,0.2)', borderWidth: 1,
+              padding: 10, titleFont: { size: 11 }, bodyFont: { size: 11 },
+              callbacks: { label: ctx => `${ctx.dataset.label}: ${comma(ctx.parsed.y)}원` }
+            }
+          },
+          scales: {
+            x: { grid: { color: 'rgba(148,163,184,0.05)' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
+            y: { grid: { color: 'rgba(148,163,184,0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: tickFmt } }
+          }
+        }
+      });
+
+      if (breakdownChart) breakdownChart.destroy();
+      breakdownChart = new Chart(document.getElementById('breakdownChart'), {
+        type: 'bar',
+        data: {
+          labels: CLIENTS.map(c => c.name),
+          datasets: [
+            { label: '보관료',   data: rows.map(r => r.m.storage), backgroundColor: '#3b82f6', borderRadius: 4 },
+            { label: '출고비',   data: rows.map(r => r.m.outFee),  backgroundColor: '#10b981', borderRadius: 4 },
+            { label: '입고비',   data: rows.map(r => r.m.inFee),   backgroundColor: '#f43f5e', borderRadius: 4 },
+            { label: '기타비용', data: rows.map(r => r.m.etc),     backgroundColor: '#f59e0b', borderRadius: 4 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 10 }, boxWidth: 8, boxHeight: 8, padding: 10, usePointStyle: true, pointStyle: 'rectRounded' } },
+            tooltip: {
+              backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(148,163,184,0.2)', borderWidth: 1,
+              callbacks: { label: ctx => `${ctx.dataset.label}: ${comma(ctx.parsed.y)}원` }
+            }
+          },
+          scales: {
+            x: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, weight: '600' }, autoSkip: false, maxRotation: 40, minRotation: 0 } },
+            y: { stacked: true, grid: { color: 'rgba(148,163,184,0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: tickFmt } }
+          }
+        }
+      });
+    }
+
+    /* ---------- 정산 근거 상세 ----------
+       화면 금액이 개별 화주 앱과 다를 때, 어느 줄에서 갈리는지 바로 대조할 수 있도록
+       대시보드가 실제로 사용한 계산 근거를 그대로 펼쳐서 보여준다. */
+
+    function closeDetail() {
+      const el = document.getElementById('detailModal');
+      el.classList.add('hidden');
+      el.classList.remove('flex');
+    }
+
+    function openDetail(key) {
+      const c = clientOf(key);
+      if (!c) return;
+      const m = calcClient(c, currentMonth);
+      const range = monthRange(currentMonth);
+      const data = store[key] || {};
+      const th = a => `<tr class="text-left">${a.map((t, i) => `<th class="${i ? 'text-right' : 'text-left'}">${t}</th>`).join('')}</tr>`;
+      const td = a => `<tr>${a.map((t, i) => `<td class="${i ? 'text-right' : 'text-left'} text-slate-300">${t}</td>`).join('')}</tr>`;
+      let head = '', body = '';
+
+      if (c.schema === 'orders') {
+        head = th(['날짜', '건수', '배차비', '건당비', '소계']);
+        const dates = Object.keys(data).filter(d => isValidDateKey(d) && d.startsWith(currentMonth)).sort();
+        body = dates.map(d => {
+          const files = (data[d] && data[d].files) || {};
+          const cnt = Object.values(files).reduce((a, b) => a + num(b), 0);
+          const names = Object.keys(files).join(', ');
+          if (cnt <= 0) return `<tr class="opacity-40"><td class="text-left">${d}</td><td class="text-right" colspan="4">건수 0 — 배차비 미발생 (${esc(names) || '파일 없음'})</td></tr>`;
+          return td([`${d}<div class="text-[10px] text-slate-500 font-normal">${esc(names)}</div>`,
+            comma(cnt) + '건', comma(c.pickupFee), comma(cnt * c.perItemFee), comma(c.pickupFee + cnt * c.perItemFee)]);
+        }).join('') || `<tr><td colspan="5" class="text-center text-slate-500 py-6">해당 월 기록이 없습니다.</td></tr>`;
+
+      } else if (c.schema === 'wms') {
+        head = th(['날짜', '보관 PLT', `보관료 (${comma(c.storageRate)}원)`]);
+        const series = buildDailyStorage(currentMonth, data, c.pltMode === 'pcs');
+        body = Object.keys(series).sort().map(d => td([d, comma(series[d]) + ' PLT', comma(num(series[d]) * c.storageRate)])).join('');
+        const logs = toArray(data.logs).filter(l => l.time && String(l.time).startsWith(currentMonth))
+          .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+        if (logs.length) {
+          body += `<tr><td colspan="3" class="text-left pt-4 font-bold text-white">입출고 비용</td></tr>`;
+          body += logs.map(l => td([String(l.time), esc(String(l.type || '')), comma(num(l.fee))])).join('');
+        }
+        if (!body) body = `<tr><td colspan="3" class="text-center text-slate-500 py-6">해당 월 기록이 없습니다.</td></tr>`;
+
+      } else {
+        const st = settingsOf(c);
+        head = th(['항목', '내역', '금액']);
+        const segs = range ? calcStorageSettlement(c, range.from, range.to).segments.filter(s => s.balance > 0) : [];
+        if (segs.length) {
+          body += `<tr><td colspan="3" class="text-left font-bold text-white">보관료</td></tr>`;
+          body += segs.map(s => td([s.start === s.end ? s.start : `${s.start} ~ ${s.end}`,
+            `${s.balance} PLT × ${s.days}일 × ${comma(st.storageFee)}원`, comma(s.fee)])).join('');
+        }
+        const evts = range ? toArray(data.events).filter(e => e.date >= range.from && e.date <= range.to)
+          .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))) : [];
+        if (evts.length) {
+          body += `<tr><td colspan="3" class="text-left pt-4 font-bold text-white">입출고 비용</td></tr>`;
+          body += evts.map(e => td([`${e.date} ${esc(e.time || '')}`,
+            `${e.type === 'in' ? '입고' : '출고'} · ${esc(e.product || '')} ${e.method === 'courier' ? (num(e.count) + '건') : (num(e.qty) + ' PLT')}`,
+            comma(eventFee(st, e))])).join('');
+        }
+        const costs = range ? toArray(data.costs).filter(x => x.date >= range.from && x.date <= range.to) : [];
+        if (costs.length) {
+          body += `<tr><td colspan="3" class="text-left pt-4 font-bold text-white">기타비용</td></tr>`;
+          body += costs.map(x => td([x.date, esc(x.desc || ''), comma(num(x.amount))])).join('');
+        }
+        if (!body) body = `<tr><td colspan="3" class="text-center text-slate-500 py-6">해당 월 정산 항목이 없습니다.</td></tr>`;
+      }
+
+      document.getElementById('dmTitle').innerText = `${c.name} · 정산 근거`;
+      document.getElementById('dmSubtitle').innerText =
+        range ? `${range.from} ~ ${range.to} (한국시간 기준)` : `${currentMonth} — 아직 시작되지 않은 달`;
+      document.getElementById('dmHead').innerHTML = head;
+      document.getElementById('dmBody').innerHTML = body;
+      document.getElementById('dmFoot').innerHTML = `
+        <div class="flex flex-wrap gap-x-6 gap-y-1 justify-end">
+          <span>공급가액 <b class="text-white">${comma(m.subtotal)}</b>원</span>
+          <span>부가세 <b class="text-slate-200">${comma(m.vat)}</b>원</span>
+          <span>합계 <b class="text-amber-200">${comma(m.subtotal + m.vat)}</b>원</span>
+        </div>
+        <p class="text-[10px] text-slate-500 mt-2 text-right">카드와 상단 총매출은 <b>공급가액(부가세 별도)</b> 기준입니다.</p>`;
+
+      const el = document.getElementById('detailModal');
+      el.classList.remove('hidden');
+      el.classList.add('flex');
+    }
+
+    /* ---------- CSV 내보내기 ---------- */
+
+    function exportCsv() {
+      const head = ['화주','보관료','입고비','출고비','기타비용','공급가액','부가세','합계','연동상태'];
+      const lines = [head.join(',')];
+      let t = { storage:0, inFee:0, outFee:0, etc:0, subtotal:0, vat:0 };
+
+      CLIENTS.forEach(c => {
+        const m = calcClient(c, currentMonth);
+        Object.keys(t).forEach(k => t[k] += m[k]);
+        lines.push([
+          `"${c.name}"`, Math.round(m.storage), Math.round(m.inFee), Math.round(m.outFee),
+          Math.round(m.etc), Math.round(m.subtotal), Math.round(m.vat),
+          Math.round(m.subtotal + m.vat), syncErr[c.key] ? '실패' : '정상'
+        ].join(','));
+      });
+
+      lines.push(['"합계"', Math.round(t.storage), Math.round(t.inFee), Math.round(t.outFee),
+        Math.round(t.etc), Math.round(t.subtotal), Math.round(t.vat),
+        Math.round(t.subtotal + t.vat), ''].join(','));
+
+      const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `TS3PL_통합정산_${currentMonth}.csv`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    }
+
+    /* ---------- 부팅 ---------- */
 
     function confirmPassword() {
       const input = document.getElementById('pwInput').value;
@@ -393,263 +1087,34 @@
     }
 
     async function init() {
-      const today = new Date();
-      currentMonth = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+      currentMonth = kstTodayMonth();
+      buildClientCards();
       await loadData(true);
       buildMonthSelector();
       render();
     }
 
     async function refreshData(showLoader = true) {
-      await loadData(showLoader);
-      buildMonthSelector();
-      render();
-    }
-
-    async function loadData(showLoader) {
-      if (showLoader) {
-        document.getElementById('loader').classList.remove('hidden');
-        document.getElementById('loader').classList.add('flex');
-      }
+      if (loading) return;
+      loading = true;
       try {
-        const noCache = '?t=' + new Date().getTime();
-
-        const [cRes, fRes, lRes] = await Promise.allSettled([
-          fetch(FIREBASE_COUNTON + noCache),
-          fetch(FIREBASE_FORLIGHT + noCache),
-          fetch(FIREBASE_LUNOX + noCache)
-        ]);
-
-        const c = cRes.status === 'fulfilled' && cRes.value.ok ? await cRes.value.json() : null;
-        const f = fRes.status === 'fulfilled' && fRes.value.ok ? await fRes.value.json() : null;
-        const l = lRes.status === 'fulfilled' && lRes.value.ok ? await lRes.value.json() : null;
-
-        countonData  = (c && !c.error) ? c : { inventory: [], logs: [], dailyPltLog: {}, manualStorageLog: {} };
-        forlightData = (f && !f.error) ? f : { inventory: [], logs: [], dailyPltLog: {}, manualStorageLog: {} };
-        lunoxData    = (l && !l.error) ? l : { inventory: [], logs: [], dailyPltLog: {}, manualStorageLog: {} };
-
-        const patchDailyPlt = (dataObj, isForlight) => {
-          if (!dataObj) return;
-          if (!dataObj.dailyPltLog) dataObj.dailyPltLog = {};
-          const todayStr = getFormattedDate();
-          
-          if (dataObj.dailyPltLog[todayStr] === undefined) {
-            let plt = 0;
-            const inv = Array.isArray(dataObj.inventory) ? dataObj.inventory : Object.values(dataObj.inventory || {});
-            inv.forEach(i => {
-              if (i && i.id !== 'in_40ft') {
-                if (isForlight) {
-                  plt += Math.ceil(((Number(i.plt) || 0) * 120 + (Number(i.pcs) || 0)) / 120);
-                } else {
-                  const box = parseInt(i.box) || 0;
-                  const pltStd = parseInt(i.pltStd) || 1;
-                  plt += Math.ceil(box / pltStd);
-                }
-              }
-            });
-            dataObj.dailyPltLog[todayStr] = plt;
-          }
-        };
-
-        patchDailyPlt(countonData, false);
-        patchDailyPlt(forlightData, true);
-        patchDailyPlt(lunoxData, false);
-
-      } catch (e) {
-        console.error("데이터 로드 실패:", e);
-      }
-      
-      if (showLoader) {
-        document.getElementById('loader').classList.add('hidden');
-        document.getElementById('loader').classList.remove('flex');
+        await loadData(showLoader);
+        buildMonthSelector();
+        render();
+      } finally {
+        loading = false;
       }
     }
 
-    function buildMonthSelector() {
-      const months = new Set([currentMonth]);
-      Object.values(countonData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
-      Object.values(forlightData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
-      Object.values(lunoxData.logs || {}).forEach(l => { if(l && l.time) months.add(l.time.substring(0,7)); });
-      Object.keys(countonData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
-      Object.keys(forlightData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
-      Object.keys(lunoxData.dailyPltLog || {}).forEach(d => months.add(d.substring(0,7)));
-      Object.keys(countonData.manualStorageLog || {}).forEach(d => months.add(d.substring(0,7)));
-      Object.keys(forlightData.manualStorageLog || {}).forEach(d => months.add(d.substring(0,7)));
-      Object.keys(lunoxData.manualStorageLog || {}).forEach(d => months.add(d.substring(0,7)));
-
-      const sorted = Array.from(months).sort().reverse();
-      const selector = document.getElementById('monthSelector');
-      const currentVal = selector.value || currentMonth;
-      
-      selector.innerHTML = sorted.map(m => {
-        const [y, mm] = m.split('-');
-        return `<option value="${m}" ${m===currentVal?'selected':''}>${y}년 ${parseInt(mm)}월</option>`;
-      }).join('');
-    }
-
-    function calcCounton(month) {
-      let storage = 0, inFee = 0, outFee = 0;
-      const dailyStorage = buildDailyStorage(month, countonData, false);
-      Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 700; });
-      
-      Object.values(countonData.logs || {}).forEach(l => {
-        if (!l || !l.time || !l.time.startsWith(month)) return;
-        const fee = Number(l.fee) || 0;
-        const type = String(l.type || '').toUpperCase().trim();
-        if (type.startsWith('IN') || type === '입고') inFee += fee;
-        else outFee += fee;
-      });
-      return { storage, inFee, outFee, total: storage + inFee + outFee };
-    }
-
-    function calcForlight(month) {
-      let storage = 0, inFee = 0, outFee = 0;
-      const dailyStorage = buildDailyStorage(month, forlightData, true);
-      Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 900; });
-      
-      Object.values(forlightData.logs || {}).forEach(l => {
-        if (!l || !l.time || !l.time.startsWith(month)) return;
-        const fee = Number(l.fee) || 0;
-        const type = String(l.type || '').toUpperCase().trim();
-        if (type.startsWith('IN') || type === '입고') inFee += fee;
-        else outFee += fee;
-      });
-      return { storage, inFee, outFee, total: storage + inFee + outFee };
-    }
-
-    function calcLunox(month) {
-      let storage = 0, inFee = 0, outFee = 0;
-      const dailyStorage = buildDailyStorage(month, lunoxData, false);
-      Object.values(dailyStorage).forEach(plt => { storage += Number(plt || 0) * 700; });
-      
-      Object.values(lunoxData.logs || {}).forEach(l => {
-        if (!l || !l.time || !l.time.startsWith(month)) return;
-        const fee = Number(l.fee) || 0;
-        const type = String(l.type || '').toUpperCase().trim();
-        if (type.startsWith('IN') || type === '입고') inFee += fee;
-        else outFee += fee;
-      });
-      return { storage, inFee, outFee, total: storage + inFee + outFee };
-    }
-
-    function render() {
-      currentMonth = document.getElementById('monthSelector').value;
-      const c = calcCounton(currentMonth);
-      const f = calcForlight(currentMonth);
-      const l = calcLunox(currentMonth);
-
-      document.getElementById('totalRevenue').innerText = (c.total + f.total + l.total).toLocaleString();
-      document.getElementById('totalStorage').innerText = (c.storage + f.storage + l.storage).toLocaleString();
-      document.getElementById('totalOut').innerText     = (c.outFee + f.outFee + l.outFee).toLocaleString();
-      document.getElementById('totalIn').innerText      = (c.inFee + f.inFee + l.inFee).toLocaleString();
-
-      document.getElementById('contonRevenue').innerText = c.total.toLocaleString();
-      document.getElementById('contonStorage').innerText = c.storage.toLocaleString();
-      document.getElementById('contonOut').innerText     = c.outFee.toLocaleString();
-      document.getElementById('contonIn').innerText      = c.inFee.toLocaleString();
-
-      document.getElementById('forlightRevenue').innerText = f.total.toLocaleString();
-      document.getElementById('forlightStorage').innerText = f.storage.toLocaleString();
-      document.getElementById('forlightOut').innerText     = f.outFee.toLocaleString();
-      document.getElementById('forlightIn').innerText      = f.inFee.toLocaleString();
-
-      document.getElementById('lunoxRevenue').innerText = l.total.toLocaleString();
-      document.getElementById('lunoxStorage').innerText = l.storage.toLocaleString();
-      document.getElementById('lunoxOut').innerText     = l.outFee.toLocaleString();
-      document.getElementById('lunoxIn').innerText      = l.inFee.toLocaleString();
-
-      const sum = c.total + f.total + l.total;
-      const cRatio = sum > 0 ? (c.total / sum) * 100 : 33.3;
-      const fRatio = sum > 0 ? (f.total / sum) * 100 : 33.3;
-      const lRatio = sum > 0 ? (l.total / sum) * 100 : 33.4;
-
-      document.getElementById('ratioCounton').style.width  = cRatio + '%';
-      document.getElementById('ratioForlight').style.width = fRatio + '%';
-      document.getElementById('ratioLunox').style.width    = lRatio + '%';
-      
-      document.getElementById('ratioCountonText').innerText  = cRatio.toFixed(1) + '%';
-      document.getElementById('ratioForlightText').innerText = fRatio.toFixed(1) + '%';
-      document.getElementById('ratioLunoxText').innerText    = lRatio.toFixed(1) + '%';
-      
-      document.getElementById('ratioLabel').innerText = sum > 0 ? `${(sum/10000).toFixed(0)}만원 기준` : '데이터 없음';
-
-      const [y, mm] = currentMonth.split('-');
-      document.getElementById('currentMonthLabel').innerText = `${y}.${mm}`;
-      
-      const now = new Date();
-      document.getElementById('lastUpdate').innerText = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-
-      drawCharts(c, f, l);
-    }
-
-    function drawCharts(c, f, l) {
-      const [yy, mm] = currentMonth.split('-').map(Number);
-      const months = [];
-      for (let i = 5; i >= 0; i--) {
-        let d = new Date(yy, mm - 1 - i, 1);
-        months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
-      }
-      const ctonVals = months.map(mo => calcCounton(mo).total);
-      const flVals   = months.map(mo => calcForlight(mo).total);
-      const luVals   = months.map(mo => calcLunox(mo).total);
-
-      const tickFmt = v => v >= 10000000 ? (v/10000000).toFixed(1)+'천만' : v >= 10000 ? (v/10000).toFixed(0)+'만' : v >= 1000 ? (v/1000).toFixed(0)+'K' : v;
-
-      if (trendChart) trendChart.destroy();
-      trendChart = new Chart(document.getElementById('trendChart'), {
-        type: 'line',
-        data: {
-          labels: months.map(m => m.split('-')[1] + '월'),
-          datasets: [
-            { label: '카운트온', data: ctonVals, borderColor: '#22d3ee', backgroundColor: 'rgba(34,211,238,0.12)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: '#22d3ee', pointBorderColor: '#0e1117', pointBorderWidth: 2 },
-            { label: '포라이트', data: flVals,   borderColor: '#818cf8', backgroundColor: 'rgba(129,140,248,0.12)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: '#818cf8', pointBorderColor: '#0e1117', pointBorderWidth: 2 },
-            { label: '루녹스',   data: luVals,   borderColor: '#a855f7', backgroundColor: 'rgba(168,85,247,0.12)', fill: true, tension: 0.4, borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7, pointBackgroundColor: '#a855f7', pointBorderColor: '#0e1117', pointBorderWidth: 2 }
-          ]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(148,163,184,0.2)', borderWidth: 1, padding: 10, titleFont: { size: 11 }, bodyFont: { size: 11 },
-              callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}원` }
-            }
-          },
-          scales: {
-            x: { grid: { color: 'rgba(148,163,184,0.05)' }, ticks: { color: '#94a3b8', font: { size: 11 } } },
-            y: { grid: { color: 'rgba(148,163,184,0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: tickFmt } }
-          }
-        }
-      });
-
-      if (breakdownChart) breakdownChart.destroy();
-      breakdownChart = new Chart(document.getElementById('breakdownChart'), {
-        type: 'bar',
-        data: {
-          labels: ['카운트온', '포라이트', '루녹스'],
-          datasets: [
-            { label: '보관료', data: [c.storage, f.storage, l.storage], backgroundColor: '#3b82f6', borderRadius: 4 },
-            { label: '출고비', data: [c.outFee,  f.outFee,  l.outFee],  backgroundColor: '#10b981', borderRadius: 4 },
-            { label: '입고비', data: [c.inFee,   f.inFee,   l.inFee],   backgroundColor: '#f43f5e', borderRadius: 4 }
-          ]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: {
-            legend: { position: 'bottom', labels: { color: '#94a3b8', font: { size: 10 }, boxWidth: 8, boxHeight: 8, padding: 10, usePointStyle: true, pointStyle: 'rectRounded' } },
-            tooltip: {
-              backgroundColor: 'rgba(15,23,42,0.95)', borderColor: 'rgba(148,163,184,0.2)', borderWidth: 1,
-              callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}원` }
-            }
-          },
-          scales: {
-            x: { stacked: true, grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 11, weight: '600' } } },
-            y: { stacked: true, grid: { color: 'rgba(148,163,184,0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: tickFmt } }
-          }
-        }
-      });
-    }
+    document.addEventListener("DOMContentLoaded", () => {
+      const inp = document.getElementById('pwInput');
+      inp.addEventListener('keypress', e => { if (e.key === 'Enter') confirmPassword(); });
+      inp.focus();
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+      setInterval(() => {
+        if (!document.getElementById('appContent').classList.contains('hidden')) refreshData(false);
+      }, 10000);
+    });
   </script>
 </body>
 </html>
