@@ -274,7 +274,7 @@
                                 dailyPltLog, manualStorageLog }
                               보관료 = 일별 PLT × 고정단가, 입출고비 = 각 로그의 fee
 
-       schema: 'settlement' → SB뉴트리션 / 나인블랙키친
+       schema: 'settlement' → SB뉴트리션 / 나인블랙키친 / 진주불교사
                               { events[...], costs[{date,desc,amount}], settings{...} }
                               보관료/입출고비/기타비용을 settings의 단가로 계산.
                               단가는 Firebase의 settings를 그대로 읽으므로 화주 앱에서
@@ -347,6 +347,19 @@
         pickupFee: 30000, perItemFee: 2400, vatRate: 0.1,
         desc: '택배 출고 정산 · 배차 30,000원/일 + 건당 2,400원',
         link: 'https://gusco1003-sudo.github.io/jeongsu-settlement/'
+      },
+      {
+        key: 'jinjubulgyosa', name: '진주불교사', emoji: '🙏',
+        accent: '#fb923c', accentRgb: '251,146,60',
+        schema: 'settlement', path: 'jinjubulgyosa',
+        defaults: {
+          storageFee: 900,
+          containerFee: { '20ft': 200000, '40ft': 400000 },
+          outboundFee: { korean: 0, general: 0, courier: 3300 },
+          vatRate: 0.1
+        },
+        desc: '컨테이너 하차 · 파렛트 출고비 없음 · 택배 3,300원',
+        link: 'https://gusco1003-sudo.github.io/jinjubulgyosa/'
       }
       /* ── 화주 추가 슬롯 ────────────────────────────────────────────────
       ,{
@@ -485,7 +498,7 @@
       return { storage, inFee, outFee, etc: 0, subtotal, vat: subtotal * vatRate, total: subtotal };
     }
 
-    /* ---------- 정산 스키마 (SB뉴트리션 / 나인블랙키친) ---------- */
+    /* ---------- 정산 스키마 (SB뉴트리션 / 나인블랙키친 / 진주불교사) ---------- */
 
     function settingsOf(client) {
       const data = store[client.key] || {};
