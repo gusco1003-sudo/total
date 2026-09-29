@@ -345,7 +345,7 @@
         accent: '#f472b6', accentRgb: '244,114,182',
         schema: 'orders', path: 'jeongsu/records',
         pickupFee: 30000, perItemFee: 2400, vatRate: 0.1,
-        desc: '택배 출고 정산 · 배차 30,000원/일 + 건당 2,400원',
+        desc: '택배 출고 정산 · 픽업 30,000원/회 + 건당 2,400원',
         link: 'https://gusco1003-sudo.github.io/jeongsu-settlement/'
       },
       {
@@ -355,7 +355,7 @@
         defaults: {
           storageFee: 900,
           containerFee: { '20ft': 200000, '40ft': 400000 },
-          outboundFee: { korean: 0, general: 0, courier: 3300 },
+          outboundFee: { korean: 0, general: 0, courier: 3300, box: 400 },
           vatRate: 0.1
         },
         desc: '컨테이너 하차 · 파렛트 출고비 없음 · 택배 3,300원',
@@ -410,7 +410,7 @@
     }
     function clientOf(key) { return CLIENTS.find(c => c.key === key); }
 
-    // 해당 월의 정산 구간(한국 기준). 미래 월이면 null, 이번 달이면 오늘까지.
+    // 이번 달은 한국시간 오늘까지, 지난달은 월말까지 계산. 미래 월은 제외.
     function monthRange(month) {
       const [y, m] = month.split('-').map(Number);
       if (!y || !m) return null;
@@ -487,6 +487,8 @@
 
       toArray(data.logs).forEach(l => {
         if (!l || !l.time || !String(l.time).startsWith(month)) return;
+        const range = monthRange(month);
+        if (!range || String(l.time).slice(0, 10) > range.to) return;
         const fee = num(l.fee);
         const type = String(l.type || '').toUpperCase().trim();
         if (type.startsWith('IN') || type === '입고') inFee += fee;
@@ -509,7 +511,7 @@
     function stockDelta(e) {
       if (!e) return 0;
       if (e.type === 'in') return num(e.qty);
-      if (e.method === 'courier') return -num(e.deductPlt);
+      if (e.method === 'courier' || e.method === 'box') return -num(e.deductPlt);
       return -num(e.qty);
     }
 
@@ -524,6 +526,7 @@
         return num(e.qty) * num(settings.unloadFee);       // PLT당 하차비
       }
       if (settings.outboundFee) {
+        if (e.method === 'box') return num(e.count) * num(e.boxRate ?? settings.outboundFee.box ?? 400);
         if (e.method === 'courier') return num(e.count) * num(settings.outboundFee.courier);
         return num(e.qty) * num(settings.outboundFee[e.method]);
       }
@@ -597,18 +600,26 @@
 
     /* ---------- 건당 정산 스키마 (정수공작) ---------- */
     // { 'YYYY-MM-DD': { files: { 파일명: 건수 } } }
-    // 건수가 1건이라도 있는 날마다 배차비가 발생하고, 여기에 건당 단가를 더한다.
+    // 개별 정수공작 앱과 동일한 픽업 횟수 규칙 (누락 시 1회, 0~20회).
+    function pickupUnits(record) {
+      if (!record) return 0;
+      const v = Number(record.pickup);
+      if (record.pickup === undefined || record.pickup === null || !Number.isFinite(v)) return 1;
+      return Math.max(0, Math.min(20, Math.floor(v)));
+    }
     function calcOrders(client, month) {
       const data = store[client.key] || {};
-      let days = 0, count = 0, pickup = 0, item = 0;
+      let days = 0, count = 0, pickup = 0, item = 0, unitsTotal = 0;
 
       Object.keys(data).forEach(d => {
-        if (!isValidDateKey(d) || !d.startsWith(month)) return;
+        const range = monthRange(month);
+        if (!range || !isValidDateKey(d) || d < range.from || d > range.to) return;
         const files = (data[d] && data[d].files) || {};
         const c = Object.values(files).reduce((a, b) => a + num(b), 0);
-        if (c <= 0) return;
-        days++; count += c;
-        pickup += num(client.pickupFee);
+        const units = pickupUnits(data[d]);
+        if (c <= 0 && units <= 0) return;
+        days++; count += c; unitsTotal += units;
+        pickup += units * num(client.pickupFee);
         item += c * num(client.perItemFee);
       });
 
@@ -616,8 +627,8 @@
       const vatRate = client.vatRate ?? 0.1;
       return {
         storage: 0, inFee: 0, outFee, etc: 0,
-        subtotal: outFee, vat: outFee * vatRate, total: outFee,
-        note: days ? `${days}일 배차 · ${count.toLocaleString('ko-KR')}건` : ''
+        subtotal: outFee, vat: Math.round(outFee * vatRate), total: outFee,
+        note: days ? `${days}일 · 픽업 ${unitsTotal}회 · ${count.toLocaleString('ko-KR')}건` : ''
       };
     }
 
@@ -653,6 +664,9 @@
       const r = client.schema === 'wms'    ? calcWms(client, month)
               : client.schema === 'orders' ? calcOrders(client, month)
               :                              calcSettlement(client, month);
+      // 각 개별 정산서에 표시되는 원 단위 금액을 먼저 확정한 뒤 합산한다.
+      r.total = Math.round(r.subtotal + r.vat);
+      ['storage', 'inFee', 'outFee', 'etc', 'subtotal', 'vat'].forEach(k => { r[k] = Math.round(r[k]); });
       calcCache[cacheKey] = r;
       return r;
     }
@@ -813,7 +827,7 @@
       document.getElementById('totalIn').innerText      = comma(tIn);
       document.getElementById('totalEtc').innerText     = comma(tEtc);
       document.getElementById('totalVat').innerText     = comma(tVat);
-      document.getElementById('totalWithVat').innerText = comma(tSub + tVat);
+      document.getElementById('totalWithVat').innerText = comma(sum('total'));
 
       rows.forEach(({ client: c, m }) => {
         document.getElementById('rev-' + c.key).innerText = comma(m.subtotal);
@@ -853,7 +867,7 @@
           <td class="text-right text-slate-300">${comma(m.etc)}</td>
           <td class="text-right text-white font-bold">${comma(m.subtotal)}</td>
           <td class="text-right text-slate-400">${comma(m.vat)}</td>
-          <td class="text-right text-amber-200 font-bold">${comma(m.subtotal + m.vat)}</td>
+          <td class="text-right text-amber-200 font-bold">${comma(m.total)}</td>
           <td class="text-center">${syncErr[c.key] ? '<span class="text-rose-400" title="' + esc(syncErr[c.key]) + '">실패</span>' : '<span class="text-emerald-500">정상</span>'}</td>
           <td class="text-center"><button onclick="openDetail('${c.key}')" class="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">근거</button></td>
         </tr>`).join('');
@@ -867,7 +881,7 @@
           <td class="text-right">${comma(tEtc)}</td>
           <td class="text-right">${comma(tSub)}</td>
           <td class="text-right">${comma(tVat)}</td>
-          <td class="text-right text-amber-200">${comma(tSub + tVat)}</td>
+          <td class="text-right text-amber-200">${comma(sum('total'))}</td>
           <td></td>
           <td></td>
         </tr>`;
@@ -988,22 +1002,23 @@
       let head = '', body = '';
 
       if (c.schema === 'orders') {
-        head = th(['날짜', '건수', '배차비', '건당비', '소계']);
-        const dates = Object.keys(data).filter(d => isValidDateKey(d) && d.startsWith(currentMonth)).sort();
+        head = th(['날짜', '건수', '픽업 횟수', '배차비', '건당비', '소계']);
+        const dates = Object.keys(data).filter(d => range && isValidDateKey(d) && d >= range.from && d <= range.to).sort();
         body = dates.map(d => {
           const files = (data[d] && data[d].files) || {};
           const cnt = Object.values(files).reduce((a, b) => a + num(b), 0);
           const names = Object.keys(files).join(', ');
-          if (cnt <= 0) return `<tr class="opacity-40"><td class="text-left">${d}</td><td class="text-right" colspan="4">건수 0 — 배차비 미발생 (${esc(names) || '파일 없음'})</td></tr>`;
+          const units = pickupUnits(data[d]);
+          if (cnt <= 0 && units <= 0) return "";
           return td([`${d}<div class="text-[10px] text-slate-500 font-normal">${esc(names)}</div>`,
-            comma(cnt) + '건', comma(c.pickupFee), comma(cnt * c.perItemFee), comma(c.pickupFee + cnt * c.perItemFee)]);
-        }).join('') || `<tr><td colspan="5" class="text-center text-slate-500 py-6">해당 월 기록이 없습니다.</td></tr>`;
+            comma(cnt) + '건', units + '회', comma(units * c.pickupFee), comma(cnt * c.perItemFee), comma(units * c.pickupFee + cnt * c.perItemFee)]);
+        }).join('') || `<tr><td colspan="6" class="text-center text-slate-500 py-6">해당 월 기록이 없습니다.</td></tr>`;
 
       } else if (c.schema === 'wms') {
         head = th(['날짜', '보관 PLT', `보관료 (${comma(c.storageRate)}원)`]);
         const series = buildDailyStorage(currentMonth, data, c.pltMode === 'pcs');
         body = Object.keys(series).sort().map(d => td([d, comma(series[d]) + ' PLT', comma(num(series[d]) * c.storageRate)])).join('');
-        const logs = toArray(data.logs).filter(l => l.time && String(l.time).startsWith(currentMonth))
+        const logs = toArray(data.logs).filter(l => range && l.time && String(l.time).slice(0, 10) >= range.from && String(l.time).slice(0, 10) <= range.to)
           .sort((a, b) => String(a.time).localeCompare(String(b.time)));
         if (logs.length) {
           body += `<tr><td colspan="3" class="text-left pt-4 font-bold text-white">입출고 비용</td></tr>`;
@@ -1025,7 +1040,7 @@
         if (evts.length) {
           body += `<tr><td colspan="3" class="text-left pt-4 font-bold text-white">입출고 비용</td></tr>`;
           body += evts.map(e => td([`${e.date} ${esc(e.time || '')}`,
-            `${e.type === 'in' ? '입고' : '출고'} · ${esc(e.product || '')} ${e.method === 'courier' ? (num(e.count) + '건') : (num(e.qty) + ' PLT')}`,
+            `${e.type === 'in' ? '입고' : '출고'} · ${esc(e.product || '')} ${e.method === 'box' ? (num(e.count) + '박스 × ' + comma(e.boxRate ?? st.outboundFee.box ?? 400) + '원 · 차감 ' + num(e.deductPlt) + ' PLT') : e.method === 'courier' ? (num(e.count) + '건') : (num(e.qty) + ' PLT')}`,
             comma(eventFee(st, e))])).join('');
         }
         const costs = range ? toArray(data.costs).filter(x => x.date >= range.from && x.date <= range.to) : [];
@@ -1045,7 +1060,7 @@
         <div class="flex flex-wrap gap-x-6 gap-y-1 justify-end">
           <span>공급가액 <b class="text-white">${comma(m.subtotal)}</b>원</span>
           <span>부가세 <b class="text-slate-200">${comma(m.vat)}</b>원</span>
-          <span>합계 <b class="text-amber-200">${comma(m.subtotal + m.vat)}</b>원</span>
+          <span>합계 <b class="text-amber-200">${comma(m.total)}</b>원</span>
         </div>
         <p class="text-[10px] text-slate-500 mt-2 text-right">카드와 상단 총매출은 <b>공급가액(부가세 별도)</b> 기준입니다.</p>`;
 
@@ -1059,7 +1074,7 @@
     function exportCsv() {
       const head = ['화주','보관료','입고비','출고비','기타비용','공급가액','부가세','합계','연동상태'];
       const lines = [head.join(',')];
-      let t = { storage:0, inFee:0, outFee:0, etc:0, subtotal:0, vat:0 };
+      let t = { storage:0, inFee:0, outFee:0, etc:0, subtotal:0, vat:0, total:0 };
 
       CLIENTS.forEach(c => {
         const m = calcClient(c, currentMonth);
@@ -1067,13 +1082,13 @@
         lines.push([
           `"${c.name}"`, Math.round(m.storage), Math.round(m.inFee), Math.round(m.outFee),
           Math.round(m.etc), Math.round(m.subtotal), Math.round(m.vat),
-          Math.round(m.subtotal + m.vat), syncErr[c.key] ? '실패' : '정상'
+          m.total, syncErr[c.key] ? '실패' : '정상'
         ].join(','));
       });
 
       lines.push(['"합계"', Math.round(t.storage), Math.round(t.inFee), Math.round(t.outFee),
         Math.round(t.etc), Math.round(t.subtotal), Math.round(t.vat),
-        Math.round(t.subtotal + t.vat), ''].join(','));
+        t.total, ''].join(','));
 
       const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
       const a = document.createElement('a');
