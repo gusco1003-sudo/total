@@ -191,10 +191,9 @@
       <section class="mb-5 p-4 rounded-xl border border-teal-900 bg-slate-900/60 text-xs">
         <div class="flex flex-wrap gap-3 items-center justify-between">
           <div><b class="text-teal-300">한국프로바이던스</b>
-          <p class="text-slate-400 mt-1">최초 2026.09.03 · 20PLT 입고 / 부가세 별도 10%. 기본 자료 또는 마지막으로 가져온 백업으로 집계합니다.</p>
-          <p class="text-slate-500 mt-1">최신 실적은 개별 프로그램의 ‘전체 백업’ JSON 파일을 가져오세요. 서버 자동 연동은 연결되어 있지 않습니다.</p></div>
-          <button onclick="document.getElementById('providenceImport').click()" class="px-4 py-2 rounded-lg border border-teal-700 text-teal-300">한국프로바이던스 백업 가져오기</button>
-          <input id="providenceImport" type="file" accept=".json,application/json" class="hidden" onchange="importProvidence(this)">
+          <p class="text-slate-400 mt-1">최초 2026.09.03 · 20PLT 입고 / 부가세 별도 10%. 개별 정산프로그램에서 서버에 저장한 자료로 집계합니다.</p>
+          <p class="text-slate-500 mt-1">등록·수정·삭제 후 약 10초 이내 자동 반영됩니다. 연결 실패 시 상태에 표시됩니다.</p></div>
+          <a href="./korea-providence.html" target="_blank" rel="noopener" class="px-4 py-2 rounded-lg border border-teal-700 text-teal-300">한국프로바이던스 정산 열기</a>
         </div>
       </section>
       <section id="clientGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6"></section>
@@ -306,7 +305,7 @@
     const CLIENTS = [
       {
         key: 'koreaprovidence', name: '한국프로바이던스', emoji: '🏢',
-        accent: '#2dd4bf', accentRgb: '45,212,191', schema: 'providence',
+        accent: '#2dd4bf', accentRgb: '45,212,191', schema: 'providence', path: 'koreaprovidence_data',
         desc: '입고 5,000원/PLT · 택배 2,900원/건 · 보관 700원/PLT·일',
         link: './korea-providence.html'
       },
@@ -718,32 +717,6 @@ function calculate(d,start,end){
 
       return {initialData, validateData, calculate};
     })();
-    const PROVIDENCE_KEY = 'ts3pl_integrated_providence_v1';
-    function readProvidence() {
-      const saved = localStorage.getItem(PROVIDENCE_KEY);
-      const data = saved === null ? Providence.initialData() : Providence.validateData(JSON.parse(saved));
-      if (data.vat !== 'exclusive') throw new Error('한국프로바이던스는 부가세 별도 10% 자료가 필요합니다.');
-      return {data, source: saved === null ? '기본 입고' : '백업 자료'};
-    }
-    async function importProvidence(input) {
-      const file = input.files[0];
-      if (!file) return;
-      try {
-        if (file.size > 25000000) throw new Error('백업 파일은 25MB 이하여야 합니다.');
-        const d = Providence.validateData(JSON.parse(await file.text()));
-        if (d.vat !== 'exclusive') throw new Error('개별 프로그램에서 부가세 별도 10%를 선택한 뒤 다시 백업해 주세요.');
-        if (d.entries.some(e => e.date > kstToday())) throw new Error('미래 일자의 기록은 가져올 수 없습니다.');
-        if (!confirm('한국프로바이던스 자료를 백업의 ' + d.entries.length + '개 기록으로 교체할까요?')) return;
-        localStorage.setItem(PROVIDENCE_KEY, JSON.stringify(d));
-        store.koreaprovidence = d;
-        store.koreaprovidence._source = '백업 자료';
-        syncErr.koreaprovidence = null;
-        calcCache = {};
-        buildMonthSelector(); render();
-        alert('한국프로바이던스 백업 자료를 반영했습니다.');
-      } catch (e) { alert('가져오기 실패: ' + e.message); }
-      finally { input.value = ''; }
-    }
     function calcProvidence(client, month) {
       const range = monthRange(month), d = store[client.key];
       const empty = {storage:0,inFee:0,outFee:0,etc:0,subtotal:0,vat:0,total:0};
@@ -751,7 +724,7 @@ function calculate(d,start,end){
       const r = Providence.calculate(d,range.from,range.to);
       return {storage:r.storageFee,inFee:r.inFee,outFee:r.parcelFee,etc:0,
         subtotal:r.supply,vat:r.tax,total:r.total,
-        note:(d._source || '기본 입고') + ' · 서버 미연동 · 입고일 포함 / 출고 당일 제외'};
+        note:'서버 연동 · 입고일 포함 / 출고 당일 제외'};
     }
 
     /* ---------- 데이터 로드 ---------- */
@@ -764,9 +737,7 @@ function calculate(d,start,end){
 
       const noCache = '?t=' + Date.now();
       const results = await Promise.allSettled(
-        CLIENTS.map(c => c.schema === 'providence'
-          ? Promise.resolve().then(() => { const p = readProvidence(); return {ok:true,json:async () => ({...p.data,_source:p.source})}; })
-          : fetch(`${FIREBASE_BASE}/${c.path}.json${noCache}`))
+        CLIENTS.map(c => fetch(`${FIREBASE_BASE}/${c.path}.json${noCache}`, {signal:AbortSignal.timeout(15000)}))
       );
 
       for (let i = 0; i < CLIENTS.length; i++) {
@@ -785,6 +756,14 @@ function calculate(d,start,end){
           if (json && typeof json === 'object' && json.error) { err = String(json.error); json = null; }
         }
 
+        if (!err && c.schema === 'providence') {
+          try {
+            if (!json) throw new Error('개별 정산프로그램에서 서버 연결을 먼저 완료해 주세요.');
+            if (json.entries === undefined) json.entries = [];
+            Providence.validateData(json);
+            if (json.vat !== 'exclusive') throw new Error('부가세 별도 10% 자료를 확인해 주세요.');
+          } catch (e) { err = e.message; json = null; }
+        }
         syncErr[c.key] = err;
         store[c.key] = (json && typeof json === 'object') ? json : {};
 
@@ -930,9 +909,9 @@ function calculate(d,start,end){
           badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded border border-rose-800 text-rose-400 flex-shrink-0';
           badge.title = syncErr[c.key];
         } else {
-          badge.textContent = c.schema === 'providence' ? (store[c.key]._source || '백업 자료') : '연동';
+          badge.textContent = '연동';
           badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-900 text-emerald-500 flex-shrink-0';
-          badge.title = c.schema === 'providence' ? '이 브라우저의 자료 · 서버 미연동 · 개별 프로그램 전체 백업으로 갱신' : '정상 동기화';
+          badge.title = '정상 동기화';
         }
       });
 
@@ -955,7 +934,7 @@ function calculate(d,start,end){
           <td class="text-right text-white font-bold">${comma(m.subtotal)}</td>
           <td class="text-right text-slate-400">${comma(m.vat)}</td>
           <td class="text-right text-amber-200 font-bold">${comma(m.total)}</td>
-          <td class="text-center">${syncErr[c.key] ? '<span class="text-rose-400" title="' + esc(syncErr[c.key]) + '">실패</span>' : '<span class="text-emerald-500">' + (c.schema === 'providence' ? '로컬 자료' : '정상') + '</span>'}</td>
+          <td class="text-center">${syncErr[c.key] ? '<span class="text-rose-400" title="' + esc(syncErr[c.key]) + '">실패</span>' : '<span class="text-emerald-500">' + '정상' + '</span>'}</td>
           <td class="text-center"><button onclick="openDetail('${c.key}')" class="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">근거</button></td>
         </tr>`).join('');
 
@@ -1182,7 +1161,7 @@ function calculate(d,start,end){
         lines.push([
           `"${c.name}"`, Math.round(m.storage), Math.round(m.inFee), Math.round(m.outFee),
           Math.round(m.etc), Math.round(m.subtotal), Math.round(m.vat),
-          m.total, syncErr[c.key] ? '실패' : c.schema === 'providence' ? '로컬 자료(서버 미연동)' : '정상'
+          m.total, syncErr[c.key] ? '실패' : '정상'
         ].join(','));
       });
 

@@ -9,7 +9,7 @@
 </style>
 </head>
 <body>
-<header><div class="brand"><div class="logo">KP</div><div><h1>한국프로바이던스</h1><p>물류 입출고 · 보관 · 월별 정산관리</p></div></div><span class="pill" id="saveStatus">이 브라우저에 저장</span></header>
+<header><div class="brand"><div class="logo">KP</div><div><h1>한국프로바이던스</h1><p>물류 입출고 · 보관 · 월별 정산관리</p></div></div><span class="pill" id="saveStatus">서버 연결 확인 중</span></header>
 <main>
 <div class="toolbar"><div><h2>정산 현황</h2><div class="muted" id="todayLabel"></div></div><div class="actions"><button id="exportBtn">정산 CSV 내려받기</button><button class="primary" id="printBtn">정산서 인쇄 / PDF</button></div></div>
 <div id="loadWarning" class="notice warn" hidden></div>
@@ -20,20 +20,21 @@
 <section class="panel"><div class="tabbar"><button class="active" id="logTab">입출고 · 택배 내역</button><button id="dailyTab">일별 보관비</button></div><div class="panelhead"><span class="muted" id="tableHint"></span><span class="tag" id="tableCount"></span></div><div class="tablewrap" id="logView"><table><thead><tr><th>일자</th><th>구분</th><th class="num">수량</th><th class="num">금액</th><th>메모</th><th>관리</th></tr></thead><tbody id="logsBody"></tbody></table></div><div class="tablewrap" id="dailyView" hidden><table><thead><tr><th>일자</th><th class="num">입고 PLT</th><th class="num">출고 PLT</th><th class="num">마감 PLT</th><th class="num">보관비</th></tr></thead><tbody id="dailyBody"></tbody></table></div></section>
 </div><aside>
 <section class="panel"><div class="panelhead"><h3>현재 보관 수량</h3><span class="tag">오늘 기준</span></div><div class="stock" id="stock"></div><div class="muted" id="stockHint"></div><div class="notice">최초 입고: 2026.09.03 · 20 PLT<br>입고비 100,000원으로 기본 등록되어 있습니다.</div></section>
-<section class="panel"><h3>계약 단가</h3><div class="breakdown"><span>입고 / 1 PLT</span><strong>5,000원</strong></div><div class="breakdown"><span>택배 / 1건</span><strong>2,900원</strong></div><div class="breakdown"><span>보관 / 1 PLT · 1일</span><strong>700원</strong></div><div style="margin-top:16px"><label for="vat">부가세 적용</label><select id="vat"><option value="exclusive">별도 · 10% 추가</option><option value="inclusive">포함 · 합계에서 분리</option><option value="none">계산 안 함</option></select></div><div class="notice">보관비는 입고일을 포함한 매일의 마감 재고로 계산합니다. 출고된 파렛트는 출고 당일부터 제외합니다. 이번 달은 오늘까지만 계산합니다.</div></section>
-<section class="panel"><h3>데이터 보관</h3><div class="actions"><button id="backupBtn">전체 백업</button><button id="restoreBtn">백업 복원</button></div><input type="file" id="restoreFile" accept=".json,application/json" hidden><p class="muted">자료는 현재 PC의 이 브라우저에 저장됩니다. 다른 PC로 옮기거나 브라우저 데이터를 삭제하기 전에 전체 백업을 내려받으세요. 클라우드 동기화는 연결되어 있지 않습니다.</p></section>
+<section class="panel"><h3>계약 단가</h3><div class="breakdown"><span>입고 / 1 PLT</span><strong>5,000원</strong></div><div class="breakdown"><span>택배 / 1건</span><strong>2,900원</strong></div><div class="breakdown"><span>보관 / 1 PLT · 1일</span><strong>700원</strong></div><div style="margin-top:16px"><label for="vat">부가세 적용</label><select id="vat"><option value="exclusive">별도 · 10% 추가</option></select></div><div class="notice">보관비는 입고일을 포함한 매일의 마감 재고로 계산합니다. 출고된 파렛트는 출고 당일부터 제외합니다. 이번 달은 오늘까지만 계산합니다.</div></section>
+<section class="panel"><h3>자동 저장</h3><p id="cloudStatus" class="muted">서버에 연결하고 있습니다.</p><button id="refreshCloud">서버 새로고침</button><p class="muted">등록·수정·삭제가 서버에 저장되면 통합정산에 자동 반영됩니다. 연결이 끊기면 저장 완료로 표시하지 않습니다.</p><p id="legacyWarning" class="muted"></p></section>
+<section class="panel" id="migration" hidden><h3>이전 브라우저 자료 확인</h3><select id="legacyChoice"></select><div class="tablewrap" id="legacyPreview"></div><button id="migrateLegacy">이전 자료를 서버에 반영</button><button id="dismissLegacy">서버 자료 사용</button></section>
 </aside></div><footer>한국프로바이던스 정산관리 · PLT는 파렛트 단위입니다.</footer>
 </main><div id="message" role="status" aria-live="polite"></div><section id="printSheet"></section>
 <script id="engine">
 'use strict';
 const RATE={IN:5000,PARCEL:2900,STORAGE:700};
 function dayString(d){return d.toISOString().slice(0,10)}
-function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function today(){return new Date(Date.now()+9*3600000).toISOString().slice(0,10)}
 function validDate(s){return typeof s==='string'&&/^20\d\d-\d\d-\d\d$|^2100-\d\d-\d\d$/.test(s)&&!isNaN(Date.parse(s))&&dayString(new Date(s+'T00:00:00Z'))===s}
 function nextDay(s){return dayString(new Date(Date.parse(s+'T00:00:00Z')+86400000))}
 function initialData(){return {app:'korea-providence',version:1,revision:0,vat:'exclusive',entries:[{id:'initial-20260903',date:'2026-09-03',type:'IN',qty:20,note:'최초 입고 20파렛트'}]}}
 function validateData(d){
- if(!d||d.app!=='korea-providence'||d.version!==1||!['exclusive','inclusive','none'].includes(d.vat)||!Number.isSafeInteger(d.revision)||d.revision<0||!Array.isArray(d.entries)||d.entries.length>100000)throw Error('한국프로바이던스 백업 형식이 아닙니다.');
+ if(!d||d.app!=='korea-providence'||d.version!==1||!['exclusive','inclusive','none'].includes(d.vat)||!Number.isSafeInteger(d.revision)||d.revision<0||!Array.isArray(d.entries)||d.entries.length>100000)throw Error('한국프로바이던스 자료 형식이 아닙니다.');
  const ids=new Set(),changes=new Map();
  for(const e of d.entries){if(!e||typeof e.id!=='string'||!e.id.length||e.id.length>100||ids.has(e.id)||!validDate(e.date)||!['IN','OUT','PARCEL'].includes(e.type)||!Number.isInteger(e.qty)||e.qty<1||e.qty>1000000||typeof e.note!=='string'||e.note.length>200)throw Error('잘못된 기록 또는 중복된 기록이 있습니다.');ids.add(e.id);changes.set(e.date,(changes.get(e.date)||0)+(e.type==='IN'?e.qty:e.type==='OUT'?-e.qty:0));}
  let n=0;for(const [date,delta] of [...changes].sort((a,b)=>a[0].localeCompare(b[0]))){n+=delta;if(n<0)throw Error(date+'의 마감 재고가 음수입니다. 입고·출고 수량을 확인하세요.');}
@@ -53,11 +54,110 @@ function calculate(d,start,end){
 <script>
 const $=id=>document.getElementById(id),KEY='korea_providence_settlement_v1',money=n=>n.toLocaleString('ko-KR'),esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const names={IN:'입고',OUT:'파렛트 출고',PARCEL:'택배'},vatNames={exclusive:'부가세 별도 10%',inclusive:'부가세 포함',none:'부가세 계산 안 함'};
-let data=initialData(),raw=null,storageBlocked=false,editId=null,activeTab='log',result,rangeStart,rangeEnd,toastTimer;
+let data=initialData(),storageBlocked=true,editId=null,activeTab='log',result,rangeStart,rangeEnd,toastTimer;
 function toast(s){$('message').textContent=s;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('message').textContent='',5000)}
 function warning(s){$('loadWarning').hidden=false;$('loadWarning').textContent=s;$('saveStatus').textContent='저장 상태 확인 필요'}
-try{raw=localStorage.getItem(KEY);if(raw!==null)data=validateData(JSON.parse(raw));else {localStorage.setItem(KEY,JSON.stringify(data));raw=JSON.stringify(data)}}catch(e){storageBlocked=true;warning('저장된 자료를 읽거나 저장할 수 없습니다. 현재는 기본 자료를 표시합니다. 기존 데이터 보호를 위해 변경을 차단했습니다. 백업을 확인한 후 복원하거나 브라우저 저장 설정을 확인하세요.');}
-function commit(next,restoring=false){try{if(storageBlocked&&!restoring)throw Error('저장 오류가 있어 변경할 수 없습니다. 백업 복원 또는 저장 설정 확인이 필요합니다.');if(!restoring&&localStorage.getItem(KEY)!==raw)throw Error('다른 창에서 자료가 변경되었습니다. 새로고침 후 다시 입력하세요.');next.revision=data.revision+1;validateData(next);const encoded=JSON.stringify(next);localStorage.setItem(KEY,encoded);data=next;raw=encoded;storageBlocked=false;$('loadWarning').hidden=true;$('saveStatus').textContent='브라우저 저장 완료';render();return true}catch(e){toast(e.message);return false}}
+const ENDPOINT='https://ts3pl-982ef-default-rtdb.firebaseio.com/koreaprovidence_data.json';
+let etag=null, busy=false, loading=false, ready=false, draftId=null, editBase=null, legacyCandidates=[], legacyUnreadable=false;
+const signature=d=>JSON.stringify({vat:d.vat,entries:d.entries.map(e=>({id:e.id,date:e.date,type:e.type,qty:e.qty,note:e.note})).sort((a,b)=>a.id.localeCompare(b.id))});
+function setControls(){
+ const locked=busy||loading||!ready||storageBlocked;
+ for(const id of ['submitEntry','vat'])$(id).disabled=locked;
+ $('refreshCloud').disabled=busy||loading;
+ for(const b of document.querySelectorAll('#logsBody button'))b.disabled=locked;
+ for(const id of ['date','type','qty','note','cancelEdit'])$(id).disabled=busy;
+ $('exportBtn').disabled=!ready;$('printBtn').disabled=!ready;
+}
+async function requestCloud(options={}){
+ const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
+ try{return await fetch(ENDPOINT,{cache:'no-store',...options,signal:controller.signal})}
+ finally{clearTimeout(timer)}
+}
+function cloudError(r){return Error(r.status===401||r.status===403?'서버 접근 권한을 확인해 주세요.':'서버 응답 오류 ('+r.status+')')}
+async function readCloud(){
+ const r=await requestCloud({headers:{'X-Firebase-ETag':'true'}});
+ if(!r.ok)throw cloudError(r);
+ const tag=r.headers.get('ETag');if(!tag)throw Error('서버 저장 버전을 확인할 수 없습니다.');
+ const value=await r.json();
+ return {value:value===null?null:validateCloud(value),tag};
+}
+function validateCloud(d){
+ // Firebase omits an empty array, so restore it before validating the document.
+ if(d&&d.entries===undefined)d={...d,entries:[]};
+ validateData(d);if(d.vat!=='exclusive')throw Error('부가세 별도 10% 자료만 사용할 수 있습니다.');
+ return d;
+}
+function readLegacy(){
+ legacyCandidates=[];legacyUnreadable=false;
+ for(const [key,label] of [[KEY,'개별 정산의 이전 자료'],['ts3pl_integrated_providence_v1','통합정산에 가져온 이전 자료']]){
+  try{const raw=localStorage.getItem(key);if(!raw)continue;const d=validateCloud(JSON.parse(raw));
+   const sig=signature(d);if(sig===signature(initialData())||legacyCandidates.some(c=>c.sig===sig)||localStorage.getItem(key+'_cloud_reviewed')===sig)continue;
+   legacyCandidates.push({key,label,data:d,sig});
+  }catch(e){legacyUnreadable=true;$('legacyWarning').textContent='이 브라우저의 이전 자료를 확인하지 못했습니다. 기존 자료는 그대로 보존됩니다. '+e.message;}
+ }
+}
+function showLegacy(){
+ $('migration').hidden=legacyCandidates.length===0;
+ $('legacyChoice').innerHTML=legacyCandidates.map((c,i)=>'<option value="'+i+'">'+c.label+' · '+c.data.entries.length+'개 기록</option>').join('');
+ if(legacyCandidates.length){$('legacyChoice').value='0';previewLegacy()}
+}
+function previewLegacy(){
+ const c=legacyCandidates[Number($('legacyChoice').value)];if(!c)return;
+ $('legacyPreview').innerHTML='<p>아래 기록을 확인한 뒤 서버에 반영해 주세요. 기존 브라우저 자료는 보존됩니다.</p><table><tr><th>일자</th><th>구분</th><th>수량</th><th>메모</th></tr>'+c.data.entries.map(e=>'<tr><td>'+e.date+'</td><td>'+names[e.type]+'</td><td>'+e.qty+'</td><td>'+esc(e.note)+'</td></tr>').join('')+'</table>';
+}
+async function migrateLegacy(){
+ const c=legacyCandidates[Number($('legacyChoice').value)];if(!c||busy||loading)return;
+ let next=ready?copy():JSON.parse(JSON.stringify(c.data));
+ if(ready){
+  for(const e of c.data.entries){const current=next.entries.find(x=>x.id===e.id);
+   if(current&&JSON.stringify(current)!==JSON.stringify(e))return toast('같은 기록의 내용이 서로 다릅니다. 위의 이전 자료와 서버 내역을 비교하여 직접 수정해 주세요. 자동 교체하지 않았습니다.');
+   if(!current)next.entries.push(e);
+  }
+ }
+ if(!confirm('선택한 이전 자료를 서버에 반영할까요? 서버에 있는 기록은 유지하며 없는 기록만 추가합니다.'))return;
+ if(await commit(next,true)){try{localStorage.setItem(c.key+'_cloud_reviewed',c.sig)}catch{}readLegacy();showLegacy();toast('이전 자료를 서버에 반영했습니다.')}
+}
+function acceptRemote(value,tag){data=value;etag=tag;ready=true;storageBlocked=false;
+ $('loadWarning').hidden=true;$('saveStatus').textContent='서버 연결됨';
+ $('cloudStatus').textContent='마지막 확인 '+new Date().toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul'})+' · 통합정산에 자동 반영';
+ render();setControls();
+}
+async function syncCloud(manual=false){
+ if(busy||loading)return;
+ if(!manual&&(editId||$('qty').value||$('note').value))return;
+ loading=true;setControls();
+ try{
+  const snapshot=await readCloud();etag=snapshot.tag;
+  if(snapshot.value===null){
+   ready=false;storageBlocked=true;
+   if(legacyUnreadable){warning('이전 브라우저 자료를 확인할 수 없어 최초 서버 등록을 중단했습니다. 기존 자료 확인이 필요합니다.');render();return;}
+   if(legacyCandidates.length){warning('이전 자료를 확인한 뒤 아래의 ‘이전 자료를 서버에 반영’을 눌러 주세요.');render();return;}
+   loading=false;await commit(initialData(),true);return;
+  }
+  acceptRemote(snapshot.value,snapshot.tag);
+ }catch(e){storageBlocked=true;warning('서버 연결 실패: '+e.message+' 새로고침으로 다시 확인해 주세요.');}
+ finally{loading=false;setControls()}
+}
+async function commit(next,initializing=false){
+ if(busy||loading)return false;
+ if((!ready||storageBlocked)&&!initializing){toast('서버 새로고침으로 연결을 확인한 뒤 저장해 주세요.');return false}
+ if(!etag){toast('서버 연결을 먼저 확인해 주세요.');return false}
+ try{next.revision=(ready?data.revision:0)+1;validateCloud(next)}catch(e){toast(e.message);return false}
+ busy=true;setControls();$('saveStatus').textContent='서버 저장 중…';
+ try{
+  const r=await requestCloud({method:'PUT',headers:{'Content-Type':'application/json','if-match':etag},body:JSON.stringify(next)});
+  if(r.status===412)throw Error('다른 창에서 자료가 변경되었습니다. 서버 새로고침 후 내역을 확인하고 다시 저장해 주세요.');
+  if(!r.ok)throw cloudError(r);
+  // Read after saving to get the new ETag and confirm persistence.
+  const saved=await readCloud();if(saved.value===null)throw Error('저장된 자료를 확인할 수 없습니다.');
+  acceptRemote(saved.value,saved.tag);
+  if(signature(saved.value)!==signature(next))toast('저장 후 다른 창의 변경도 반영되었습니다. 내역을 확인해 주세요.');
+  $('saveStatus').textContent='서버 저장 완료';return true;
+ }catch(e){storageBlocked=true;warning('저장 완료를 확인하지 못했습니다. '+e.message);toast(e.message);return false}
+ finally{busy=false;setControls()}
+}
+async function startCloud(){readLegacy();showLegacy();await syncCloud(true)}
+
 function copy(){return JSON.parse(JSON.stringify(data))}
 function setMonth(month){if(!/^20\d\d-\d\d$|^2100-\d\d$/.test(month))return toast('정산월을 선택하세요.');const first=month+'-01';if(!validDate(first)||first>today())return toast('미래 월은 아직 정산할 수 없습니다.');const last=dayString(new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)));rangeStart=first;rangeEnd=last<today()?last:today();$('month').value=month;$('start').value=rangeStart;$('end').value=rangeEnd;render()}
 function currentStock(){return data.entries.filter(e=>e.date<=today()).reduce((n,e)=>n+(e.type==='IN'?e.qty:e.type==='OUT'?-e.qty:0),0)}
@@ -68,20 +168,27 @@ function render(){
  amount('total',result.total);amount('inFee',result.inFee);amount('parcelFee',result.parcelFee);amount('storageFee',result.storageFee);$('taxSummary').textContent='공급가액 '+money(result.supply)+'원 · 부가세 '+money(result.tax)+'원';$('inHint').textContent=money(result.inQty)+' PLT × 5,000원';$('parcelHint').textContent=money(result.parcelQty)+'건 × 2,900원';$('storageHint').textContent=money(result.pltDays)+' PLT·일 × 700원';$('stock').innerHTML=money(currentStock())+' <small>PLT</small>';$('stockHint').textContent='현재 수량의 하루 보관비 '+money(currentStock()*700)+'원';
  const entries=periodEntries();$('logsBody').innerHTML=entries.map(e=>'<tr><td>'+e.date+'</td><td><span class="tag">'+names[e.type]+'</span></td><td class="num">'+money(e.qty)+(e.type==='PARCEL'?'건':' PLT')+'</td><td class="num">'+(e.type==='OUT'?'—':money(e.qty*RATE[e.type])+'원')+'</td><td class="note">'+esc(e.note)+'</td><td><button data-edit="'+esc(e.id)+'">수정</button> <button class="danger" data-delete="'+esc(e.id)+'">삭제</button></td></tr>').join('')||'<tr><td colspan="6" class="empty">이 기간에 등록된 내역이 없습니다.</td></tr>';
  $('dailyBody').innerHTML=result.daily.map(r=>'<tr><td>'+r.date+'</td><td class="num">'+money(r.inQty)+'</td><td class="num">'+money(r.outQty)+'</td><td class="num">'+money(r.balance)+'</td><td class="num">'+money(r.fee)+'원</td></tr>').join('');updateTab();
+ if(!ready){for(const id of ['total','inFee','parcelFee','storageFee','stock'])$(id).textContent='—';
+ for(const id of ['taxSummary','inHint','parcelHint','storageHint','stockHint'])$(id).textContent='서버 자료 확인 전';
+ $('logsBody').innerHTML='<tr><td colspan="6">서버 자료를 확인하고 있습니다.</td></tr>';$('dailyBody').innerHTML='';}
+ setControls();
 }
 function updateTab(){$('logView').hidden=activeTab!=='log';$('dailyView').hidden=activeTab!=='daily';$('logTab').classList.toggle('active',activeTab==='log');$('dailyTab').classList.toggle('active',activeTab==='daily');$('tableCount').textContent=activeTab==='log'?periodEntries().length+'개 기록':result.daily.length+'일';$('tableHint').textContent=activeTab==='log'?'선택한 기간의 기록입니다. 수정·삭제하면 정산에 즉시 반영됩니다.':'전월 재고를 이월하여 일별 마감 수량으로 계산합니다.'}
 function updateType(){const t=$('type').value;$('qtyLabel').textContent=t==='PARCEL'?'택배 건수 (건)':t==='IN'?'입고 수량 (PLT)':'출고 수량 (PLT)';$('entryHint').textContent=t==='PARCEL'?'택배 1건당 2,900원. 택배 등록은 보관 파렛트를 자동 차감하지 않습니다. 파렛트가 비워진 경우 파렛트 출고도 별도로 등록하세요.':t==='OUT'?'파렛트 출고는 재고를 차감하고, 출고 당일부터 보관비를 줄입니다. 별도 파렛트 출고비는 부과하지 않습니다.':'입고 1PLT당 5,000원. 입고 당일부터 보관비 700원/PLT·일이 적용됩니다.'}
-function resetForm(){editId=null;$('entryForm').reset();$('date').value=today();$('formTitle').textContent='입출고 / 택배 등록';$('submitEntry').textContent='등록하기';$('cancelEdit').hidden=true;updateType()}
-$('entryForm').onsubmit=e=>{e.preventDefault();const entry={id:editId||crypto.randomUUID(),date:$('date').value,type:$('type').value,qty:Number($('qty').value),note:$('note').value.trim()};if(!validDate(entry.date)||entry.date>today())return toast('오늘까지의 올바른 처리일을 입력하세요.');const next=copy();if(editId)next.entries=next.entries.map(x=>x.id===editId?entry:x);else next.entries.push(entry);if(commit(next)){const outside=entry.date<rangeStart||entry.date>rangeEnd;resetForm();if(outside)setMonth(entry.date.slice(0,7));toast('기록을 저장했습니다.')}};
-$('logsBody').onclick=e=>{const button=e.target.closest('button');if(!button)return;if(button.dataset.edit){const entry=data.entries.find(x=>x.id===button.dataset.edit);editId=entry.id;$('date').value=entry.date;$('type').value=entry.type;$('qty').value=entry.qty;$('note').value=entry.note;$('formTitle').textContent='기록 수정';$('submitEntry').textContent='수정 저장';$('cancelEdit').hidden=false;updateType();$('entryForm').scrollIntoView({behavior:'smooth',block:'center'})}else if(button.dataset.delete){const entry=data.entries.find(x=>x.id===button.dataset.delete);if(confirm(entry.date+' '+names[entry.type]+' '+entry.qty+(entry.type==='PARCEL'?'건':' PLT')+' 기록을 삭제할까요? 정산과 재고가 다시 계산됩니다.')){const next=copy();next.entries=next.entries.filter(x=>x.id!==entry.id);if(commit(next)){if(editId===entry.id)resetForm();toast('삭제했습니다.')}}}};
-$('type').onchange=updateType;$('cancelEdit').onclick=resetForm;$('month').onchange=()=>setMonth($('month').value);$('thisMonth').onclick=()=>setMonth(today().slice(0,7));$('applyRange').onclick=()=>{const s=$('start').value,e=$('end').value;if(!validDate(s)||!validDate(e)||s>e||e>today())return toast('시작일과 종료일을 확인하세요. 종료일은 오늘까지 가능합니다.');if((Date.parse(e)-Date.parse(s))/86400000>730)return toast('한 번에 조회할 기간은 최대 731일입니다.');rangeStart=s;rangeEnd=e;render()};$('logTab').onclick=()=>{activeTab='log';updateTab()};$('dailyTab').onclick=()=>{activeTab='daily';updateTab()};$('vat').onchange=()=>{const next=copy();next.vat=$('vat').value;if(commit(next))toast('부가세 적용을 저장했습니다. 모든 기간에 적용됩니다.');else $('vat').value=data.vat};
+function resetForm(){editId=null;editBase=null;draftId=crypto.randomUUID();$('entryForm').reset();$('date').value=today();$('formTitle').textContent='입출고 / 택배 등록';$('submitEntry').textContent='등록하기';$('cancelEdit').hidden=true;updateType()}
+$('entryForm').onsubmit=async e=>{e.preventDefault();if(busy||loading||!ready||storageBlocked)return toast('서버 연결을 확인해 주세요.');const entry={id:editId||draftId,date:$('date').value,type:$('type').value,qty:Number($('qty').value),note:$('note').value.trim()};if(!validDate(entry.date)||entry.date>today())return toast('오늘까지의 올바른 처리일을 입력하세요.');const next=copy();const existing=next.entries.find(x=>x.id===entry.id);if(editId&&JSON.stringify(existing)!==editBase)return toast('이 기록이 다른 창에서 변경되었습니다. 수정 취소 후 최신 내역에서 다시 수정해 주세요.');if(!editId&&existing){if(JSON.stringify(existing)===JSON.stringify(entry)){resetForm();return toast('이미 서버에 저장된 기록입니다.')}return toast('같은 기록이 서버에 있습니다. 내역을 확인해 주세요.')}if(editId)next.entries=next.entries.map(x=>x.id===editId?entry:x);else next.entries.push(entry);if(await commit(next)){const outside=entry.date<rangeStart||entry.date>rangeEnd;resetForm();if(outside)setMonth(entry.date.slice(0,7));toast('기록을 저장했습니다.')}};
+$('logsBody').onclick=async e=>{if(busy||loading||!ready||storageBlocked)return;const button=e.target.closest('button');if(!button)return;if(button.dataset.edit){const entry=data.entries.find(x=>x.id===button.dataset.edit);editId=entry.id;editBase=JSON.stringify(entry);$('date').value=entry.date;$('type').value=entry.type;$('qty').value=entry.qty;$('note').value=entry.note;$('formTitle').textContent='기록 수정';$('submitEntry').textContent='수정 저장';$('cancelEdit').hidden=false;updateType();$('entryForm').scrollIntoView({behavior:'smooth',block:'center'})}else if(button.dataset.delete){const entry=data.entries.find(x=>x.id===button.dataset.delete);if(confirm(entry.date+' '+names[entry.type]+' '+entry.qty+(entry.type==='PARCEL'?'건':' PLT')+' 기록을 삭제할까요? 정산과 재고가 다시 계산됩니다.')){const next=copy();next.entries=next.entries.filter(x=>x.id!==entry.id);if(await commit(next)){if(editId===entry.id)resetForm();toast('삭제했습니다.')}}}};
+$('type').onchange=updateType;$('cancelEdit').onclick=resetForm;$('month').onchange=()=>setMonth($('month').value);$('thisMonth').onclick=()=>setMonth(today().slice(0,7));$('applyRange').onclick=()=>{const s=$('start').value,e=$('end').value;if(!validDate(s)||!validDate(e)||s>e||e>today())return toast('시작일과 종료일을 확인하세요. 종료일은 오늘까지 가능합니다.');if((Date.parse(e)-Date.parse(s))/86400000>730)return toast('한 번에 조회할 기간은 최대 731일입니다.');rangeStart=s;rangeEnd=e;render()};$('logTab').onclick=()=>{activeTab='log';updateTab()};$('dailyTab').onclick=()=>{activeTab='daily';updateTab()};
 function download(name,text,type){const url=URL.createObjectURL(new Blob([text],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}
-function backup(){download('한국프로바이던스_전체백업_'+today()+'.json',JSON.stringify(data,null,2),'application/json')}
-$('backupBtn').onclick=()=>{backup();toast('백업 파일을 내려받았습니다.')};$('restoreBtn').onclick=()=>$('restoreFile').click();$('restoreFile').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>25000000)throw Error('백업 파일은 25MB 이하여야 합니다.');const restored=validateData(JSON.parse(await f.text()));if(restored.entries.some(x=>x.date>today()))throw Error('미래 일자의 기록이 있는 백업은 복원할 수 없습니다.');if(!confirm('백업 파일의 기록 '+restored.entries.length+'개로 현재 자료 전체를 바꿀까요? 현재 자료의 백업 파일도 먼저 내려받습니다.'))return;backup();if(commit(restored,true)){resetForm();toast('백업 자료를 복원했습니다.')}}catch(error){toast('복원 실패: '+error.message)}finally{e.target.value=''}};
 function csvCell(v){let s=String(v??'');if(typeof v==='string'&&/^[\s]*[=+@-]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'}
 $('exportBtn').onclick=()=>{const r=result,rows=[['한국프로바이던스 정산서'],['정산 시작일',rangeStart],['정산 종료일',rangeEnd],['부가세 적용',vatNames[data.vat]],[],['항목','수량','단위','단가','금액'],['입고비',r.inQty,'PLT',5000,r.inFee],['택배비',r.parcelQty,'건',2900,r.parcelFee],['보관비',r.pltDays,'PLT·일',700,r.storageFee],['공급가액','','','',r.supply],['부가세','','','',r.tax],['청구 합계','','','',r.total],[],['일별 보관비'],['일자','입고 PLT','출고 PLT','마감 PLT','보관비'],...r.daily.map(d=>[d.date,d.inQty,d.outQty,d.balance,d.fee]),[],['입출고 · 택배 내역'],['일자','구분','수량','단위','금액','메모'],...periodEntries().map(e=>[e.date,names[e.type],e.qty,e.type==='PARCEL'?'건':'PLT',e.type==='OUT'?0:e.qty*RATE[e.type],e.note])];download('한국프로바이던스_정산_'+rangeStart+'_'+rangeEnd+'.csv','\uFEFF'+rows.map(row=>row.map(csvCell).join(',')).join('\r\n'),'text/csv;charset=utf-8')};
 $('printBtn').onclick=()=>{const r=result;$('printSheet').innerHTML='<p>물류 서비스 정산서</p><h1>한국프로바이던스</h1><p>정산 기간: '+rangeStart+' ~ '+rangeEnd+'<br>발행일: '+today()+' · '+vatNames[data.vat]+'</p><table><thead><tr><th>항목</th><th>수량</th><th>단가</th><th>금액</th></tr></thead><tbody>'+[['입고비',money(r.inQty)+' PLT','5,000원',r.inFee],['택배비',money(r.parcelQty)+'건','2,900원',r.parcelFee],['보관비',money(r.pltDays)+' PLT·일','700원',r.storageFee],['공급가액','','',r.supply],['부가세','','',r.tax]].map(a=>'<tr><td>'+a[0]+'</td><td>'+a[1]+'</td><td>'+a[2]+'</td><td class="num">'+money(a[3])+'원</td></tr>').join('')+'</tbody></table><div class="printtotal">청구 합계 '+money(r.total)+'원</div><p>보관 기준: 입고일 포함, 당일 마감 재고 기준. 출고 당일부터 해당 파렛트 제외.<br>부가세는 합계 기준 원 단위 반올림. 이 문서는 물류비 정산 내역서입니다.</p><h3>일별 보관 내역</h3><table><thead><tr><th>일자</th><th>입고 PLT</th><th>출고 PLT</th><th>마감 PLT</th><th>보관비</th></tr></thead><tbody>'+r.daily.map(d=>'<tr><td>'+d.date+'</td><td>'+money(d.inQty)+'</td><td>'+money(d.outQty)+'</td><td>'+money(d.balance)+'</td><td class="num">'+money(d.fee)+'원</td></tr>').join('')+'</tbody></table><h3>입출고 · 택배 내역</h3><table><thead><tr><th>일자</th><th>구분</th><th>수량</th><th>금액</th><th>메모</th></tr></thead><tbody>'+periodEntries().map(e=>'<tr><td>'+e.date+'</td><td>'+names[e.type]+'</td><td>'+money(e.qty)+(e.type==='PARCEL'?'건':' PLT')+'</td><td>'+money(e.type==='OUT'?0:e.qty*RATE[e.type])+'원</td><td>'+esc(e.note)+'</td></tr>').join('')+'</tbody></table>';window.print()};
-window.addEventListener('storage',e=>{if(e.key===KEY)warning('다른 창에서 자료가 변경되었습니다. 입력 전에 새로고침해 주세요.');});
-$('date').max=today();$('start').max=today();$('end').max=today();resetForm();setMonth(today().slice(0,7));
+$('refreshCloud').onclick=()=>syncCloud(true);
+$('legacyChoice').onchange=previewLegacy;$('migrateLegacy').onclick=migrateLegacy;
+$('dismissLegacy').onclick=()=>{if(!confirm('이전 브라우저 자료를 추가하지 않고 서버 자료를 사용할까요? 이전 자료는 이 브라우저에 보존됩니다.'))return;for(const c of legacyCandidates){try{localStorage.setItem(c.key+'_cloud_reviewed',c.sig)}catch{}}legacyCandidates=[];showLegacy();syncCloud(true)};
+window.addEventListener('focus',()=>syncCloud());
+setInterval(()=>syncCloud(),10000);
+$('date').max=today();$('start').max=today();$('end').max=today();resetForm();setMonth(today().slice(0,7));startCloud();
 </script>
 </body></html>
+
