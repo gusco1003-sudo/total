@@ -188,6 +188,15 @@
         </div>
       </section>
 
+      <section class="mb-5 p-4 rounded-xl border border-teal-900 bg-slate-900/60 text-xs">
+        <div class="flex flex-wrap gap-3 items-center justify-between">
+          <div><b class="text-teal-300">한국프로바이던스</b>
+          <p class="text-slate-400 mt-1">최초 2026.09.03 · 20PLT 입고 / 부가세 별도 10%. 기본 자료 또는 마지막으로 가져온 백업으로 집계합니다.</p>
+          <p class="text-slate-500 mt-1">최신 실적은 개별 프로그램의 ‘전체 백업’ JSON 파일을 가져오세요. 서버 자동 연동은 연결되어 있지 않습니다.</p></div>
+          <button onclick="document.getElementById('providenceImport').click()" class="px-4 py-2 rounded-lg border border-teal-700 text-teal-300">한국프로바이던스 백업 가져오기</button>
+          <input id="providenceImport" type="file" accept=".json,application/json" class="hidden" onchange="importProvidence(this)">
+        </div>
+      </section>
       <section id="clientGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 mb-6"></section>
 
       <section class="mb-6 animate-fadeup">
@@ -295,6 +304,12 @@
     const ADMIN_PW = "4656";
 
     const CLIENTS = [
+      {
+        key: 'koreaprovidence', name: '한국프로바이던스', emoji: '🏢',
+        accent: '#2dd4bf', accentRgb: '45,212,191', schema: 'providence',
+        desc: '입고 5,000원/PLT · 택배 2,900원/건 · 보관 700원/PLT·일',
+        link: ''
+      },
       {
         key: 'counton', name: '카운트온', emoji: '📦',
         accent: '#22d3ee', accentRgb: '34,211,238',
@@ -661,7 +676,8 @@
     function calcClient(client, month) {
       const cacheKey = client.key + '|' + month;
       if (calcCache[cacheKey]) return calcCache[cacheKey];
-      const r = client.schema === 'wms'    ? calcWms(client, month)
+      const r = client.schema === 'providence' ? calcProvidence(client, month)
+              : client.schema === 'wms'    ? calcWms(client, month)
               : client.schema === 'orders' ? calcOrders(client, month)
               :                              calcSettlement(client, month);
       // 각 개별 정산서에 표시되는 원 단위 금액을 먼저 확정한 뒤 합산한다.
@@ -669,6 +685,73 @@
       ['storage', 'inFee', 'outFee', 'etc', 'subtotal', 'vat'].forEach(k => { r[k] = Math.round(r[k]); });
       calcCache[cacheKey] = r;
       return r;
+    }
+
+
+    // 개별 한국프로바이던스 앱과 동일한 계산 엔진. 기존 업체 계산과 독립적이다.
+    const Providence = (() => {
+
+'use strict';
+const RATE={IN:5000,PARCEL:2900,STORAGE:700};
+function dayString(d){return d.toISOString().slice(0,10)}
+function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function validDate(s){return typeof s==='string'&&/^20\d\d-\d\d-\d\d$|^2100-\d\d-\d\d$/.test(s)&&!isNaN(Date.parse(s))&&dayString(new Date(s+'T00:00:00Z'))===s}
+function nextDay(s){return dayString(new Date(Date.parse(s+'T00:00:00Z')+86400000))}
+function initialData(){return {app:'korea-providence',version:1,revision:0,vat:'exclusive',entries:[{id:'initial-20260903',date:'2026-09-03',type:'IN',qty:20,note:'최초 입고 20파렛트'}]}}
+function validateData(d){
+ if(!d||d.app!=='korea-providence'||d.version!==1||!['exclusive','inclusive','none'].includes(d.vat)||!Number.isSafeInteger(d.revision)||d.revision<0||!Array.isArray(d.entries)||d.entries.length>100000)throw Error('한국프로바이던스 백업 형식이 아닙니다.');
+ const ids=new Set(),changes=new Map();
+ for(const e of d.entries){if(!e||typeof e.id!=='string'||!e.id.length||e.id.length>100||ids.has(e.id)||!validDate(e.date)||!['IN','OUT','PARCEL'].includes(e.type)||!Number.isInteger(e.qty)||e.qty<1||e.qty>1000000||typeof e.note!=='string'||e.note.length>200)throw Error('잘못된 기록 또는 중복된 기록이 있습니다.');ids.add(e.id);changes.set(e.date,(changes.get(e.date)||0)+(e.type==='IN'?e.qty:e.type==='OUT'?-e.qty:0));}
+ let n=0;for(const [date,delta] of [...changes].sort((a,b)=>a[0].localeCompare(b[0]))){n+=delta;if(n<0)throw Error(date+'의 마감 재고가 음수입니다. 입고·출고 수량을 확인하세요.');}
+ return d;
+}
+function calculate(d,start,end){
+ if(!validDate(start)||!validDate(end)||start>end)throw Error('정산 기간을 올바르게 입력하세요.');
+ let balance=0,inQty=0,parcelQty=0,pltDays=0;const daily=[],byDate=new Map();
+ for(const e of d.entries){const delta=e.type==='IN'?e.qty:e.type==='OUT'?-e.qty:0;if(e.date<start)balance+=delta;else if(e.date<=end){if(!byDate.has(e.date))byDate.set(e.date,{IN:0,OUT:0,PARCEL:0});byDate.get(e.date)[e.type]+=e.qty;}}
+ for(let date=start;date<=end;date=nextDay(date)){const movement=byDate.get(date)||{IN:0,OUT:0,PARCEL:0};balance+=movement.IN-movement.OUT;inQty+=movement.IN;parcelQty+=movement.PARCEL;pltDays+=balance;daily.push({date,inQty:movement.IN,outQty:movement.OUT,balance,fee:balance*RATE.STORAGE});}
+ const inFee=inQty*RATE.IN,parcelFee=parcelQty*RATE.PARCEL,storageFee=pltDays*RATE.STORAGE,base=inFee+parcelFee+storageFee;
+ let supply=base,tax=0,total=base;if(d.vat==='exclusive'){tax=Math.round(base*.1);total=base+tax}else if(d.vat==='inclusive'){supply=Math.round(base/1.1);tax=base-supply}
+ if(![base,supply,tax,total].every(Number.isSafeInteger))throw Error('계산 가능한 금액 범위를 초과했습니다.');
+ return {daily,inQty,parcelQty,pltDays,inFee,parcelFee,storageFee,base,supply,tax,total,balance};
+}
+
+      return {initialData, validateData, calculate};
+    })();
+    const PROVIDENCE_KEY = 'ts3pl_integrated_providence_v1';
+    function readProvidence() {
+      const saved = localStorage.getItem(PROVIDENCE_KEY);
+      const data = saved === null ? Providence.initialData() : Providence.validateData(JSON.parse(saved));
+      if (data.vat !== 'exclusive') throw new Error('한국프로바이던스는 부가세 별도 10% 자료가 필요합니다.');
+      return {data, source: saved === null ? '기본 입고' : '백업 자료'};
+    }
+    async function importProvidence(input) {
+      const file = input.files[0];
+      if (!file) return;
+      try {
+        if (file.size > 25000000) throw new Error('백업 파일은 25MB 이하여야 합니다.');
+        const d = Providence.validateData(JSON.parse(await file.text()));
+        if (d.vat !== 'exclusive') throw new Error('개별 프로그램에서 부가세 별도 10%를 선택한 뒤 다시 백업해 주세요.');
+        if (d.entries.some(e => e.date > kstToday())) throw new Error('미래 일자의 기록은 가져올 수 없습니다.');
+        if (!confirm('한국프로바이던스 자료를 백업의 ' + d.entries.length + '개 기록으로 교체할까요?')) return;
+        localStorage.setItem(PROVIDENCE_KEY, JSON.stringify(d));
+        store.koreaprovidence = d;
+        store.koreaprovidence._source = '백업 자료';
+        syncErr.koreaprovidence = null;
+        calcCache = {};
+        buildMonthSelector(); render();
+        alert('한국프로바이던스 백업 자료를 반영했습니다.');
+      } catch (e) { alert('가져오기 실패: ' + e.message); }
+      finally { input.value = ''; }
+    }
+    function calcProvidence(client, month) {
+      const range = monthRange(month), d = store[client.key];
+      const empty = {storage:0,inFee:0,outFee:0,etc:0,subtotal:0,vat:0,total:0};
+      if (!range || !d || !d.entries) return empty;
+      const r = Providence.calculate(d,range.from,range.to);
+      return {storage:r.storageFee,inFee:r.inFee,outFee:r.parcelFee,etc:0,
+        subtotal:r.supply,vat:r.tax,total:r.total,
+        note:(d._source || '기본 입고') + ' · 서버 미연동 · 입고일 포함 / 출고 당일 제외'};
     }
 
     /* ---------- 데이터 로드 ---------- */
@@ -681,7 +764,9 @@
 
       const noCache = '?t=' + Date.now();
       const results = await Promise.allSettled(
-        CLIENTS.map(c => fetch(`${FIREBASE_BASE}/${c.path}.json${noCache}`))
+        CLIENTS.map(c => c.schema === 'providence'
+          ? Promise.resolve().then(() => { const p = readProvidence(); return {ok:true,json:async () => ({...p.data,_source:p.source})}; })
+          : fetch(`${FIREBASE_BASE}/${c.path}.json${noCache}`))
       );
 
       for (let i = 0; i < CLIENTS.length; i++) {
@@ -742,6 +827,8 @@
           toArray(d.logs).forEach(l => { if (l.time) months.add(String(l.time).substring(0, 7)); });
           Object.keys(d.dailyPltLog || {}).forEach(x => months.add(x.substring(0, 7)));
           Object.keys(d.manualStorageLog || {}).forEach(x => months.add(x.substring(0, 7)));
+        } else if (c.schema === 'providence') {
+          toArray(d.entries).forEach(e => months.add(e.date.slice(0,7)));
         } else if (c.schema === 'orders') {
           Object.keys(d).forEach(x => { if (isValidDateKey(x)) months.add(x.substring(0, 7)); });
         } else {
@@ -843,9 +930,9 @@
           badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded border border-rose-800 text-rose-400 flex-shrink-0';
           badge.title = syncErr[c.key];
         } else {
-          badge.textContent = '연동';
+          badge.textContent = c.schema === 'providence' ? (store[c.key]._source || '백업 자료') : '연동';
           badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-900 text-emerald-500 flex-shrink-0';
-          badge.title = '정상 동기화';
+          badge.title = c.schema === 'providence' ? '이 브라우저의 자료 · 서버 미연동 · 개별 프로그램 전체 백업으로 갱신' : '정상 동기화';
         }
       });
 
@@ -868,7 +955,7 @@
           <td class="text-right text-white font-bold">${comma(m.subtotal)}</td>
           <td class="text-right text-slate-400">${comma(m.vat)}</td>
           <td class="text-right text-amber-200 font-bold">${comma(m.total)}</td>
-          <td class="text-center">${syncErr[c.key] ? '<span class="text-rose-400" title="' + esc(syncErr[c.key]) + '">실패</span>' : '<span class="text-emerald-500">정상</span>'}</td>
+          <td class="text-center">${syncErr[c.key] ? '<span class="text-rose-400" title="' + esc(syncErr[c.key]) + '">실패</span>' : '<span class="text-emerald-500">' + (c.schema === 'providence' ? '로컬 자료' : '정상') + '</span>'}</td>
           <td class="text-center"><button onclick="openDetail('${c.key}')" class="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">근거</button></td>
         </tr>`).join('');
 
@@ -1001,7 +1088,20 @@
       const td = a => `<tr>${a.map((t, i) => `<td class="${i ? 'text-right' : 'text-left'} text-slate-300">${t}</td>`).join('')}</tr>`;
       let head = '', body = '';
 
-      if (c.schema === 'orders') {
+      if (c.schema === 'providence') {
+        head = th(['일자 / 항목', '계산 근거', '금액']);
+        if (range && data.entries) {
+          const r = Providence.calculate(data, range.from, range.to);
+          body = r.daily.filter(d => d.balance > 0).map(d => td([d.date,
+            comma(d.balance) + ' PLT × 700원', comma(d.fee)])).join('');
+          body += toArray(data.entries).filter(e => e.date >= range.from && e.date <= range.to)
+            .sort((a,b) => a.date.localeCompare(b.date)).map(e => td([e.date,
+              esc(({IN:'입고',OUT:'파렛트 출고',PARCEL:'택배'})[e.type]) + ' · ' + comma(e.qty) +
+              (e.type === 'PARCEL' ? '건' : ' PLT') + ' · ' + esc(e.note),
+              comma(e.type === 'IN' ? e.qty * 5000 : e.type === 'PARCEL' ? e.qty * 2900 : 0)])).join('');
+        }
+        if (!body) body = '<tr><td colspan="3">해당 월 자료가 없습니다.</td></tr>';
+      } else if (c.schema === 'orders') {
         head = th(['날짜', '건수', '픽업 횟수', '배차비', '건당비', '소계']);
         const dates = Object.keys(data).filter(d => range && isValidDateKey(d) && d >= range.from && d <= range.to).sort();
         body = dates.map(d => {
@@ -1082,7 +1182,7 @@
         lines.push([
           `"${c.name}"`, Math.round(m.storage), Math.round(m.inFee), Math.round(m.outFee),
           Math.round(m.etc), Math.round(m.subtotal), Math.round(m.vat),
-          m.total, syncErr[c.key] ? '실패' : '정상'
+          m.total, syncErr[c.key] ? '실패' : c.schema === 'providence' ? '로컬 자료(서버 미연동)' : '정상'
         ].join(','));
       });
 
