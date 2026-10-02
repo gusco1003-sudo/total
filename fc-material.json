@@ -1,0 +1,32 @@
+{
+  "settings": {
+    "shipper": {
+      "name": "에프씨머티리얼"
+    },
+    "unloadFee": 5000,
+    "outboundFee": {
+      "general": 5000
+    },
+    "storageFee": 800,
+    "vatRate": 0.1
+  },
+  "events": [
+    {
+      "id": "fc-in-20261001",
+      "type": "in",
+      "date": "2026-10-01",
+      "time": "",
+      "product": "에프씨머티리얼",
+      "qty": 9,
+      "memo": "최초 입고 9PLT"
+    }
+  ],
+  "costs": [
+    {
+      "id": "fc-freight-20261001",
+      "date": "2026-10-01",
+      "desc": "입고 화물비",
+      "amount": 120000
+    }
+  ]
+}
