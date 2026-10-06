@@ -176,7 +176,7 @@
         <button onclick="setRange('lastMonth')" class="btn-ghost px-3 py-2 rounded-lg text-xs font-bold">지난달</button>
         <button onclick="setRange('all')" class="btn-ghost px-3 py-2 rounded-lg text-xs font-bold">전체기간</button>
         <button onclick="renderSettlement()" class="btn-primary px-4 py-2 rounded-lg text-xs font-bold ml-auto">정산서 계산</button>
-        <button onclick="window.print()" class="btn-ghost px-4 py-2 rounded-lg text-xs font-bold">인쇄 / PDF 저장</button>
+        <button onclick="window.print()" class="btn-ghost px-4 py-2 rounded-lg text-xs font-bold">인쇄</button> <button type="button" data-download-statement class="no-print btn-primary primary px-4 py-2 rounded-lg text-xs font-bold">PDF 다운로드</button>
       </div>
     </div>
 
@@ -724,5 +724,5 @@ window.addEventListener('DOMContentLoaded', () => {
   loadData();
 });
 </script>
-</body>
+<script src="./statement-pdf.js"></script></body>
 </html>
