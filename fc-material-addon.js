@@ -32,8 +32,8 @@ if(!CLIENTS.some(c=>c.key==='fcmaterial')) CLIENTS.unshift({
           if (json && typeof json === 'object' && json.error) { err = String(json.error); json = null; }
         }
 
-        if (!err && c.schema === 'dailyLedger') {
-          try { json = NewHansol.normalize(json); }
+        if (!err && ['dailyLedger','costLedger'].includes(c.schema)) {
+          try { json = (c.schema==='costLedger'?CostLedger:NewHansol).normalize(json); if(json.app!==c.key)throw Error('거래처 자료를 확인해 주세요.'); }
           catch (e) { err = e.message; json = null; }
         }
         if (!err && c.schema === 'providence') {
