@@ -21,7 +21,7 @@
   function start(){canvas=document.createElement('canvas');canvas.width=W*2;canvas.height=H*2;ctx=canvas.getContext('2d');ctx.scale(2,2);ctx.fillStyle='white';ctx.fillRect(0,0,W,H);ctx.fillStyle='#0d7377';font(11,true);ctx.fillText('TS3PL · SETTLEMENT STATEMENT',M,43);font(25,true);ctx.fillStyle='#1b2430';ctx.fillText('보관·물류비 정산서',M,69);font(12);ctx.fillText(data.period,M,108);ctx.fillText('화주: '+data.name,M,135);y=158;for(const s of wrap(ctx,'공급자: '+data.supplier,W-2*M)){ctx.fillText(s,M,y);y+=17;}y+=19;page={canvas};pages.push(page);header();}
   function header(){ctx.fillStyle='#eef5f5';ctx.fillRect(M,y,W-2*M,31);ctx.fillStyle='#33454c';font(12,true);ctx.fillText('항목',M+9,y+9);ctx.fillText('산출 내역',M+219,y+9);ctx.textAlign='right';ctx.fillText('금액',W-M-9,y+9);ctx.textAlign='left';y+=31;}
   start();
-  for(const row of data.rows){font();const cols=[wrap(ctx,row[0],192),wrap(ctx,row[1],331),wrap(ctx,row[2],121)];let at=0;const count=Math.max(...cols.map(c=>c.length));while(at<count){if(y+34>bottom)start();const take=Math.min(count-at,Math.floor((bottom-y-16)/18));const height=take*18+16;ctx.fillStyle='#1b2430';font();for(let i=0;i<take;i++){ctx.fillText(cols[0][at+i]||'',M+9,y+8+i*18);ctx.fillText(cols[1][at+i]||'',M+219,y+8+i*18);ctx.textAlign='right';ctx.fillText(cols[2][at+i]||'',W-M-9,y+8+i*18);ctx.textAlign='left';}y+=height;line(y);at+=take;if(at<count)start();}}
+  for(const [rowIndex,row] of data.rows.entries()){font();const cols=[wrap(ctx,row[0],192),wrap(ctx,row[1],331),wrap(ctx,row[2],121)];let at=0;const count=Math.max(...cols.map(c=>c.length));if(rowIndex===data.rows.length-1 && y+count*18+156>bottom && count*18+156<700)start();while(at<count){if(y+34>bottom)start();const take=Math.min(count-at,Math.floor((bottom-y-16)/18));const height=take*18+16;ctx.fillStyle='#1b2430';font();for(let i=0;i<take;i++){ctx.fillText(cols[0][at+i]||'',M+9,y+8+i*18);ctx.fillText(cols[1][at+i]||'',M+219,y+8+i*18);ctx.textAlign='right';ctx.fillText(cols[2][at+i]||'',W-M-9,y+8+i*18);ctx.textAlign='left';}y+=height;line(y);at+=take;if(at<count)start();}}
   if(y+140>bottom)start();y+=24;
   ['공급가액','부가세 10%','합계 청구금액'].forEach((label,i)=>{font(i===2?16:13,i===2);ctx.fillStyle=i===2?'#0d7377':'#1b2430';ctx.fillText(label,430,y);ctx.textAlign='right';ctx.fillText(data.totals[i],W-M-9,y);ctx.textAlign='left';y+=34;});
   pages.forEach((p,i)=>{const c=p.canvas.getContext('2d');c.font='11px "Malgun Gothic", sans-serif';c.fillStyle='#65717b';c.textAlign='center';c.fillText(`${i+1} / ${pages.length}`,W/2,H-28);});
@@ -39,5 +39,13 @@
   const old=button.textContent;button.disabled=true;button.textContent='PDF 생성 중…';
   try{await document.fonts.ready;const data=snapshot();if(!data.period.includes('202')||data.totals.some(v=>!v||v==='-'))throw Error('정산 기간과 계산 금액을 먼저 확인해 주세요.');const blob=pdf(renderPages(data)),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=(data.name+'_'+data.period+'_정산서.pdf').replace(/[\\/:*?"<>|]/g,'-');document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(e){alert('PDF 생성 실패: '+e.message);}finally{button.disabled=false;button.textContent=old;}
  }
+ window.StatementPDF={async downloadBatch(statements,filename){
+  if(!statements.length)throw Error('발급할 정산서가 없습니다.');
+  await document.fonts.ready;
+  const images=[];
+  for(const data of statements){images.push(...renderPages(data));await new Promise(resolve=>setTimeout(resolve,0));}
+  const url=URL.createObjectURL(pdf(images)),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  return {statements:statements.length,pages:images.length};
+ }};
  document.querySelectorAll('[data-download-statement]').forEach(button=>button.addEventListener('click',()=>download(button)));
 })();

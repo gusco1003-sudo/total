@@ -208,9 +208,9 @@
               <h3 class="font-display font-bold text-base">화주별 정산 상세</h3>
               <p class="text-[10px] text-slate-500">선택 월 · 개별 정산 앱과 동일한 계산식</p>
             </div>
-            <button onclick="exportCsv()" class="bg-slate-800 border border-slate-700 hover:border-cyan-600 rounded-lg px-3 py-2 text-[11px] font-bold text-slate-200 transition">CSV 내보내기</button>
+            <button id="batchStatements" type="button" class="bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 rounded-lg px-3 py-2 text-xs font-bold text-white">정산서 일괄 발급 (PDF)</button><button onclick="exportCsv()" class="bg-slate-800 border border-slate-700 hover:border-cyan-600 rounded-lg px-3 py-2 text-[11px] font-bold text-slate-200 transition">CSV 내보내기</button>
           </div>
-          <div class="overflow-x-auto -mx-2 px-2">
+          <p id="batchStatus" role="status" class="text-xs text-cyan-300 mb-3">선택한 월의 전체 업체 정산서를 PDF 한 파일로 발급합니다. 이번 달은 오늘까지 계산합니다.</p><div class="overflow-x-auto -mx-2 px-2">
             <table class="num-table w-full text-[11px] sm:text-xs font-mono-num">
               <thead>
                 <tr class="text-left">
@@ -1072,11 +1072,11 @@ function calculate(d,start,end){
       el.classList.remove('flex');
     }
 
-    function openDetail(key) {
+    function calculationDetail(key, month = currentMonth) {
       const c = clientOf(key);
       if (!c) return;
-      const m = calcClient(c, currentMonth);
-      const range = monthRange(currentMonth);
+      const m = calcClient(c, month);
+      const range = monthRange(month);
       const data = store[key] || {};
       const th = a => `<tr class="text-left">${a.map((t, i) => `<th class="${i ? 'text-right' : 'text-left'}">${t}</th>`).join('')}</tr>`;
       const td = a => `<tr>${a.map((t, i) => `<td class="${i ? 'text-right' : 'text-left'} text-slate-300">${t}</td>`).join('')}</tr>`;
@@ -1118,7 +1118,7 @@ function calculate(d,start,end){
 
       } else if (c.schema === 'wms') {
         head = th(['날짜', '보관 PLT', `보관료 (${comma(c.storageRate)}원)`]);
-        const series = buildDailyStorage(currentMonth, data, c.pltMode === 'pcs');
+        const series = buildDailyStorage(month, data, c.pltMode === 'pcs');
         body = Object.keys(series).sort().map(d => td([d, comma(series[d]) + ' PLT', comma(num(series[d]) * c.storageRate)])).join('');
         const logs = toArray(data.logs).filter(l => range && l.time && String(l.time).slice(0, 10) >= range.from && String(l.time).slice(0, 10) <= range.to)
           .sort((a, b) => String(a.time).localeCompare(String(b.time)));
@@ -1153,6 +1153,12 @@ function calculate(d,start,end){
         if (!body) body = `<tr><td colspan="3" class="text-center text-slate-500 py-6">해당 월 정산 항목이 없습니다.</td></tr>`;
       }
 
+      return {c,m,range,head,body};
+    }
+    function openDetail(key) {
+      const result = calculationDetail(key);
+      if (!result) return;
+      const {c,m,range,head,body} = result;
       document.getElementById('dmTitle').innerText = `${c.name} · 정산 근거`;
       document.getElementById('dmSubtitle').innerText =
         range ? `${range.from} ~ ${range.to} (한국시간 기준)` : `${currentMonth} — 아직 시작되지 않은 달`;
@@ -1246,5 +1252,5 @@ function calculate(d,start,end){
       }, 10000);
     });
   </script>
-</body>
+<script src="./statement-pdf.js"></script><script src="./batch-statements.js"></script></body>
 </html>
