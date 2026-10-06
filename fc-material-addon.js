@@ -1,8 +1,8 @@
 // 에프씨머티리얼 전용 페이지와 동일한 정산 자료를 읽습니다.
 if(!CLIENTS.some(c=>c.key==='fcmaterial')) CLIENTS.unshift({
  key:'fcmaterial', name:'에프씨머티리얼', emoji:'🏭', accent:'#38bdf8', accentRgb:'56,189,248',
- schema:'settlement', path:'fcmaterial', dataUrl:'./fc-material.json',
- defaults:{unloadFee:5000,storageFee:800,outboundFee:{general:5000},vatRate:0.1},
+ schema:'settlement', path:'fcmaterial',
+ defaults:{unloadFee:5000,storageFee:800,vatRate:0.1},
  desc:'하차·상차 5,000원/PLT · 보관 800원/PLT·일', link:'./fc-material.html'
 });
     async function loadData(showLoader) {

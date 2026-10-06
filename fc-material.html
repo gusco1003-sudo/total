@@ -1,31 +1,728 @@
-<!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>에프씨머티리얼 · TS3PL 정산</title>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TS3PL · 에프씨머티리얼 입출고 정산관리</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@1.3.9/dist/web/static/pretendard.css">
+<script src="https://cdn.tailwindcss.com"></script>
 <style>
-:root{color-scheme:light;font-family:'Malgun Gothic',Arial,sans-serif;color:#183245;background:#f2f5f8}*{box-sizing:border-box}body{margin:0}main{max-width:1000px;margin:auto;padding:36px 24px}header{display:flex;justify-content:space-between;gap:20px;align-items:center}h1{font-size:28px;margin:8px 0}h2{font-size:18px;margin:0 0 18px}.muted{color:#596e7e;font-size:13px;line-height:1.7}.brand{font-weight:700;color:#086d8e;font-size:13px;letter-spacing:2px}.panel{background:white;border:1px solid #dce5ec;border-radius:14px;padding:24px;margin-top:20px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:24px}.cards .panel{margin:0}.value{font-size:29px;font-weight:700;margin-top:12px;color:#076788}.label{font-size:13px;color:#536a7b}a{color:#066b8e}button,a.btn{display:inline-block;cursor:pointer;background:#fff;color:#17394c;border:1px solid #ccd9e1;border-radius:8px;padding:10px 14px;font:inherit;text-decoration:none}button:hover,a.btn:hover{background:#edf5fa}.toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap}label{font-size:13px}input{display:block;margin-top:6px;padding:9px;border:1px solid #bfced8;border-radius:7px;font:inherit}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:13px 10px;border-bottom:1px solid #e2e8ee;text-align:left}th{font-weight:600;color:#526b7d;background:#f5f8fa}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.total{font-weight:700;background:#edf6f9}.scroll{overflow:auto}#status{margin:14px 0;font-size:13px}#status.error{color:#b22435}footer{font-size:12px;color:#677a87;margin-top:22px;line-height:1.8}@media(max-width:650px){main{padding:24px 14px}header{display:block}.cards{grid-template-columns:1fr}.cards .panel{padding:16px}.value{font-size:25px}.panel{padding:18px}h1{font-size:25px}}@media print{.no-print{display:none!important}body{background:#fff}main{padding:0}.panel{break-inside:avoid}.cards{grid-template-columns:repeat(3,1fr)}}
-</style><script src="./fc-material-core.js"></script></head><body><main>
-<header><div><div class="brand">TS3PL</div><h1>에프씨머티리얼</h1><div class="muted">파렛트 입출고 · 보관료 정산</div></div><a class="btn no-print" href="./">통합정산으로</a></header>
-<div id="status" role="status">정산 자료를 불러오는 중입니다.</div>
-<section class="cards"><div class="panel"><div class="label">현재 보관 재고</div><div class="value" id="stock">—</div><div class="muted" id="stockDate"></div></div><div class="panel"><div class="label">하루 보관료</div><div class="value" id="dailyFee">—</div><div class="muted">1PLT × 800원 / 일</div></div><div class="panel"><div class="label">최초 입고</div><div class="value">9 PLT</div><div class="muted">2026년 10월 1일</div></div></section>
-<section class="panel"><h2>적용 단가</h2><div class="scroll"><table><thead><tr><th>하차비</th><th>상차비</th><th>보관료</th><th>입고 화물비</th></tr></thead><tbody><tr><td>5,000원 / PLT</td><td>5,000원 / PLT</td><td>800원 / PLT / 일</td><td>120,000원</td></tr></tbody></table></div></section>
-<section class="panel"><h2>기간별 정산</h2><div class="toolbar no-print"><label>시작일<input type="date" id="from"></label><label>종료일<input type="date" id="to"></label><button id="calculate">계산</button><button id="refresh">자료 새로고침</button><button onclick="window.print()">인쇄 / PDF</button></div><p class="muted" id="period"></p><div class="scroll"><table><thead><tr><th>항목</th><th>산출 내역</th><th class="num">금액</th></tr></thead><tbody id="fees"></tbody></table></div></section>
-<section class="panel"><h2>입출고 및 화물 내역</h2><div class="scroll"><table><thead><tr><th>날짜</th><th>구분</th><th>수량 / 내역</th><th class="num">금액</th></tr></thead><tbody id="records"></tbody></table></div></section>
-<footer>보관료는 입고 당일부터 부과하며, 출고일에도 차감 전 파렛트 수량으로 계산합니다.<br>상차비는 실제 출고가 있을 때만 계산합니다. 정산금액은 공급가액과 부가세 10%를 구분합니다.<br>등록 내역 조회용 페이지입니다. 통합정산과 동일한 자료를 사용하며 보관료는 한국시간 기준으로 누적됩니다.</footer>
-</main><script>
-let fcData=null;const $=id=>document.getElementById(id),won=n=>Math.round(n).toLocaleString('ko-KR')+'원';
-const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function renderFC(){
- if(!fcData)return;
- const from=$('from').value,to=$('to').value;if(to>fcToday())throw Error('종료일은 오늘까지 선택해 주세요.');
- const r=fcCalculate(fcData,from,to),today=fcCalculate(fcData,'2026-10-01',fcToday());
- $('stock').textContent=today.balance+' PLT';$('stockDate').textContent=fcToday()+' 기준';$('dailyFee').textContent=won(today.balance*fcData.settings.storageFee);
- $('period').textContent=from+' ~ '+to+' (입고일 포함)';
- const inQty=r.events.filter(e=>e.type==='in').reduce((n,e)=>n+e.qty,0),outQty=r.events.filter(e=>e.type==='out').reduce((n,e)=>n+e.qty,0),pltDays=r.daily.reduce((n,e)=>n+e.qty,0);
- const line=(name,detail,amount,cls='')=>`<tr class="${cls}"><td>${name}</td><td>${detail}</td><td class="num">${won(amount)}</td></tr>`;
- $('fees').innerHTML=line('하차비',inQty+' PLT × 5,000원',r.inFee)+line('상차비',outQty+' PLT × 5,000원',r.outFee)+line('보관료',pltDays+' PLT·일 × 800원 ('+r.daily.length+'일)',r.storage)+line('화물비',r.costs.length+'건',r.etc)+line('공급가액','부가세 별도',r.subtotal,'total')+line('부가세','10%',r.vat)+line('합계','부가세 포함',r.total,'total');
- $('records').innerHTML=r.events.map(e=>`<tr><td>${escapeHtml(e.date)}</td><td>${e.type==='in'?'입고 / 하차':'출고 / 상차'}</td><td>${e.qty} PLT</td><td class="num">${won(e.qty*5000)}</td></tr>`).join('')+r.costs.map(e=>`<tr><td>${escapeHtml(e.date)}</td><td>화물</td><td>${escapeHtml(e.desc)}</td><td class="num">${won(e.amount)}</td></tr>`).join('');
- if(!r.events.length&&!r.costs.length)$('records').innerHTML='<tr><td colspan="4">해당 기간 등록 내역이 없습니다.</td></tr>';
+  :root{
+    --bg:#EFF1F3;
+    --surface:#FFFFFF;
+    --ink:#1B2430;
+    --ink-soft:#5B6472;
+    --line:#DDE1E6;
+    --teal:#0D7377;
+    --teal-dark:#0A5457;
+    --wood:#B9814F;
+    --wood-soft:#EFDFC8;
+    --amber:#E8A33D;
+    --danger:#D6524A;
+    --success:#2F9E63;
+  }
+  *{font-family:'Pretendard',-apple-system,'Malgun Gothic',sans-serif;}
+  body{background:var(--bg); color:var(--ink);}
+  .tabular{font-variant-numeric:tabular-nums; letter-spacing:0.01em;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px;}
+  .btn-primary{background:var(--teal); color:#fff; transition:background .15s ease;}
+  .btn-primary:hover{background:var(--teal-dark);}
+  .btn-ghost{background:transparent; border:1px solid var(--line); color:var(--ink-soft);}
+  .btn-ghost:hover{background:#F5F6F8;}
+  .btn-danger{background:transparent; border:1px solid var(--danger); color:var(--danger);}
+  .btn-danger:hover{background:#FDF0EF;}
+  .tab-btn{border-bottom:2px solid transparent; color:var(--ink-soft); font-weight:600;}
+  .tab-btn.active{border-bottom-color:var(--teal); color:var(--ink);}
+  .pallet-chip{width:14px; height:14px; border-radius:3px; background:var(--wood); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.15);}
+  .pallet-chip.empty{background:var(--wood-soft);}
+  input, select{border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#fff; font-size:14px;}
+  input:focus, select:focus{outline:2px solid var(--teal); outline-offset:1px; border-color:var(--teal);}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{text-align:left; color:var(--ink-soft); font-weight:600; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+  td{padding:8px 10px; border-bottom:1px solid #EEF0F2; white-space:nowrap;}
+  .badge-in{background:#E4F4EC; color:var(--success); border-radius:999px; padding:2px 10px; font-size:12px; font-weight:700;}
+  .badge-out{background:#FCEBEA; color:var(--danger); border-radius:999px; padding:2px 10px; font-size:12px; font-weight:700;}
+  @media print{
+    .no-print{display:none !important;}
+    body{background:#fff;}
+    .card{border:1px solid #999; box-shadow:none;}
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="max-w-6xl mx-auto px-4 py-6">
+
+  <!-- 헤더 -->
+  <header class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-6 no-print">
+    <div>
+      <div class="text-xs font-bold tracking-widest text-[var(--teal)] mb-1">TS3PL · 3PL FULFILLMENT</div>
+      <h1 class="text-2xl md:text-3xl font-extrabold">에프씨머티리얼 입출고·보관료 정산관리</h1>
+      <div class="text-sm text-[var(--ink-soft)] mt-1">공급자 (주)태성 &nbsp;·&nbsp; 화주 에프씨머티리얼 &nbsp;·&nbsp; 품목 에프씨머티리얼</div>
+    </div>
+    <div class="flex items-center gap-3">
+      <div class="text-right">
+        <div id="syncStatus" class="text-xs text-[var(--ink-soft)] flex items-center gap-1 justify-end">
+          <span id="syncDot" class="w-2 h-2 rounded-full bg-gray-300 inline-block"></span>
+          <span id="syncText">동기화 대기중</span>
+        </div>
+        <div id="lastSavedText" class="text-[11px] text-[var(--ink-soft)] mt-0.5"></div>
+      </div>
+      <a href="./" class="btn-ghost px-3 py-2 rounded-lg text-xs font-bold">통합정산</a>
+      <button onclick="manualSave()" class="btn-ghost px-3 py-2 rounded-lg text-xs font-bold">지금 저장</button>
+      <div class="card px-4 py-2 text-right">
+        <div class="text-[11px] text-[var(--ink-soft)]">현재 재고</div>
+        <div class="text-xl font-extrabold tabular" id="stockHeadline">- PLT</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 재고 게이지 (signature element) -->
+  <div class="card p-4 mb-6 no-print">
+    <div class="flex items-center justify-between mb-2">
+      <div class="text-sm font-bold">재고 현황 (팔레트)</div>
+      <div class="text-xs text-[var(--ink-soft)]" id="gaugeSubtext"></div>
+    </div>
+    <div id="palletGauge" class="flex flex-wrap gap-1.5"></div>
+  </div>
+
+  <!-- 탭 네비게이션 -->
+  <nav class="flex gap-6 border-b border-[var(--line)] mb-6 no-print overflow-x-auto">
+    <button class="tab-btn active py-2 px-1 whitespace-nowrap" data-tab="dashboard" onclick="switchTab('dashboard')">대시보드</button>
+    <button class="tab-btn py-2 px-1 whitespace-nowrap" data-tab="events" onclick="switchTab('events')">입출고 관리</button>
+    <button class="tab-btn py-2 px-1 whitespace-nowrap" data-tab="settlement" onclick="switchTab('settlement')">비용 정산</button>
+    <button class="tab-btn py-2 px-1 whitespace-nowrap" data-tab="settings" onclick="switchTab('settings')">설정</button>
+  </nav>
+
+  <!-- ============ 대시보드 ============ -->
+  <section id="tab-dashboard" class="tab-panel">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div class="card p-4">
+        <div class="text-xs text-[var(--ink-soft)] mb-1">현재 재고</div>
+        <div class="text-2xl font-extrabold tabular" id="statStock">-</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-[var(--ink-soft)] mb-1">누적 보관료 (오늘까지)</div>
+        <div class="text-2xl font-extrabold tabular" id="statStorage">-</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-[var(--ink-soft)] mb-1">이번달 입고</div>
+        <div class="text-2xl font-extrabold tabular" id="statInMonth">-</div>
+      </div>
+      <div class="card p-4">
+        <div class="text-xs text-[var(--ink-soft)] mb-1">이번달 출고</div>
+        <div class="text-2xl font-extrabold tabular" id="statOutMonth">-</div>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <div class="text-sm font-bold mb-3">최근 입출고 내역</div>
+      <div class="overflow-x-auto">
+        <table>
+          <thead><tr><th>구분</th><th>일시</th><th>품목</th><th>PLT</th><th>하차비</th><th>메모</th></tr></thead>
+          <tbody id="recentEventsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 입출고 관리 ============ -->
+  <section id="tab-events" class="tab-panel hidden">
+    <div class="grid md:grid-cols-2 gap-4 mb-6">
+      <div class="card p-4">
+        <div class="text-sm font-bold mb-3 text-[var(--success)]">입고 등록</div>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="text-xs text-[var(--ink-soft)] col-span-1">날짜<input type="date" id="inDate" class="w-full mt-1"></label>
+          <label class="text-xs text-[var(--ink-soft)] col-span-1">시간<input type="time" id="inTime" class="w-full mt-1"></label>
+          <label class="text-xs text-[var(--ink-soft)] col-span-2">품목<input type="text" id="inProduct" value="에프씨머티리얼" class="w-full mt-1"></label>
+          <label class="text-xs text-[var(--ink-soft)] col-span-1">PLT 수량<input type="number" min="1" id="inQty" class="w-full mt-1"></label>
+          <label class="text-xs text-[var(--ink-soft)] col-span-1">메모<input type="text" id="inMemo" placeholder="선택입력" class="w-full mt-1"></label>
+        </div>
+        <button onclick="addEvent('in')" class="btn-primary w-full mt-3 py-2 rounded-lg font-bold text-sm">입고 등록 (PLT당 하차비 5,000원 자동계산)</button>
+      </div>
+
+      <div class="card p-4">
+        <div class="text-sm font-bold mb-3 text-[var(--danger)]">출고 등록</div>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="text-xs text-[var(--ink-soft)] col-span-1">날짜<input type="date" id="outDate" class="w-full mt-1"></label>
+          <label class="text-xs text-[var(--ink-soft)] col-span-1">시간<input type="time" id="outTime" class="w-full mt-1"></label>
+          <label class="text-xs text-[var(--ink-soft)] col-span-2">품목<input type="text" id="outProduct" value="에프씨머티리얼" class="w-full mt-1"></label>
+          <label class="text-xs text-[var(--ink-soft)] col-span-1">PLT 수량<input type="number" min="1" id="outQty" class="w-full mt-1"></label>
+          <label class="text-xs text-[var(--ink-soft)] col-span-1">메모<input type="text" id="outMemo" placeholder="선택입력" class="w-full mt-1"></label>
+        </div>
+        <button onclick="addEvent('out')" class="btn-primary w-full mt-3 py-2 rounded-lg font-bold text-sm">출고 등록 (PLT당 상차비 5,000원 자동계산)</button>
+      </div>
+    </div>
+
+    <div class="card p-4">
+      <div class="text-sm font-bold mb-3">입출고 전체 내역</div>
+      <div class="overflow-x-auto">
+        <table>
+          <thead><tr><th>구분</th><th>일시</th><th>품목</th><th>PLT</th><th>하차비</th><th>메모</th><th class="no-print">관리</th></tr></thead>
+          <tbody id="allEventsBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 비용 정산 ============ -->
+  <section id="tab-settlement" class="tab-panel hidden">
+    <div class="card p-4 mb-4 no-print">
+      <div class="text-sm font-bold mb-3">정산 기간</div>
+      <div class="flex flex-wrap items-end gap-3">
+        <label class="text-xs text-[var(--ink-soft)]">시작일<input type="date" id="settleFrom" class="block mt-1"></label>
+        <label class="text-xs text-[var(--ink-soft)]">종료일<input type="date" id="settleTo" class="block mt-1"></label>
+        <button onclick="setRange('thisMonth')" class="btn-ghost px-3 py-2 rounded-lg text-xs font-bold">이번달</button>
+        <button onclick="setRange('lastMonth')" class="btn-ghost px-3 py-2 rounded-lg text-xs font-bold">지난달</button>
+        <button onclick="setRange('all')" class="btn-ghost px-3 py-2 rounded-lg text-xs font-bold">전체기간</button>
+        <button onclick="renderSettlement()" class="btn-primary px-4 py-2 rounded-lg text-xs font-bold ml-auto">정산서 계산</button>
+        <button onclick="window.print()" class="btn-ghost px-4 py-2 rounded-lg text-xs font-bold">인쇄 / PDF 저장</button>
+      </div>
+    </div>
+
+    <!-- 화물비/기타비용 등록 -->
+    <div class="card p-4 mb-4 no-print">
+      <div class="text-sm font-bold mb-3">화물비 · 기타비용 등록</div>
+      <div class="flex flex-wrap items-end gap-2">
+        <label class="text-xs text-[var(--ink-soft)]">날짜<input type="date" id="costDate" class="block mt-1"></label>
+        <label class="text-xs text-[var(--ink-soft)]">내역<input type="text" id="costDesc" placeholder="예: 화물비" class="block mt-1 w-40"></label>
+        <label class="text-xs text-[var(--ink-soft)]">금액(원)<input type="number" min="0" id="costAmount" class="block mt-1 w-32"></label>
+        <button onclick="addCost()" class="btn-primary px-4 py-2 rounded-lg text-xs font-bold">등록</button>
+      </div>
+      <div class="overflow-x-auto mt-3">
+        <table>
+          <thead><tr><th>날짜</th><th>내역</th><th class="text-right">금액</th><th class="no-print">관리</th></tr></thead>
+          <tbody id="costsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- 정산서 -->
+    <div class="card p-6" id="invoiceCard">
+      <div class="flex justify-between items-start mb-6">
+        <div>
+          <div class="text-xs text-[var(--ink-soft)]">SETTLEMENT STATEMENT</div>
+          <h2 class="text-xl font-extrabold">보관·물류비 정산서</h2>
+          <div class="text-xs text-[var(--ink-soft)] mt-1" id="invoicePeriod">기간: -</div>
+        </div>
+        <div class="text-right text-xs text-[var(--ink-soft)] leading-relaxed" id="supplierBlock"></div>
+      </div>
+
+      <div class="mb-4 text-sm">
+        <span class="text-[var(--ink-soft)]">화주(공급받는자):</span> <span class="font-bold" id="invoiceShipper">에프씨머티리얼</span>
+      </div>
+
+      <table class="mb-4">
+        <thead><tr><th>항목</th><th>산출 내역</th><th class="text-right">금액</th></tr></thead>
+        <tbody id="invoiceBody"></tbody>
+      </table>
+
+      <div class="flex justify-end">
+        <div class="w-full md:w-72">
+          <div class="flex justify-between py-1.5 text-sm"><span class="text-[var(--ink-soft)]">공급가액 (부가세 별도)</span><span class="tabular font-semibold" id="invoiceSubtotal">-</span></div>
+          <div class="flex justify-between py-1.5 text-sm"><span class="text-[var(--ink-soft)]">부가세 (10%)</span><span class="tabular font-semibold" id="invoiceVat">-</span></div>
+          <div class="flex justify-between py-2 text-base border-t border-[var(--line)] mt-1"><span class="font-extrabold">합계 청구금액</span><span class="tabular font-extrabold text-[var(--teal)]" id="invoiceTotal">-</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 설정 ============ -->
+  <section id="tab-settings" class="tab-panel hidden">
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="card p-4">
+        <div class="text-sm font-bold mb-3">단가 설정</div>
+        <label class="text-xs text-[var(--ink-soft)] block mb-2">하차비 (원/PLT, 입·출고 동일)
+          <input type="number" id="cfgUnload" class="w-full mt-1"></label>
+        <label class="text-xs text-[var(--ink-soft)] block mb-2">보관료 (원/PLT/일)
+          <input type="number" id="cfgStorage" class="w-full mt-1"></label>
+        <label class="text-xs text-[var(--ink-soft)] block mb-2">부가세율 (%)
+          <input type="number" id="cfgVat" class="w-full mt-1"></label>
+        <button onclick="saveConfig()" class="btn-primary w-full mt-2 py-2 rounded-lg font-bold text-sm">설정 저장</button>
+        <p class="text-[11px] text-[var(--ink-soft)] mt-2">보관료는 입고일부터 출고일(또는 오늘)까지 매일 재고 PLT 기준으로 누적 계산됩니다.</p>
+      </div>
+
+      <div class="card p-4">
+        <div class="text-sm font-bold mb-3">공급자 정보 (정산서 표시용)</div>
+        <label class="text-xs text-[var(--ink-soft)] block mb-2">상호
+          <input type="text" id="cfgSupplierName" class="w-full mt-1"></label>
+        <label class="text-xs text-[var(--ink-soft)] block mb-2">사업자등록번호
+          <input type="text" id="cfgSupplierBiz" placeholder="선택입력" class="w-full mt-1"></label>
+        <label class="text-xs text-[var(--ink-soft)] block mb-2">대표자
+          <input type="text" id="cfgSupplierCeo" placeholder="선택입력" class="w-full mt-1"></label>
+        <label class="text-xs text-[var(--ink-soft)] block mb-2">주소
+          <input type="text" id="cfgSupplierAddr" placeholder="선택입력" class="w-full mt-1"></label>
+        <label class="text-xs text-[var(--ink-soft)] block mb-2">연락처
+          <input type="text" id="cfgSupplierPhone" placeholder="선택입력" class="w-full mt-1"></label>
+        <button onclick="saveConfig()" class="btn-primary w-full mt-2 py-2 rounded-lg font-bold text-sm">설정 저장</button>
+      </div>
+    </div>
+
+    <div class="card p-4 mt-4">
+      <div class="text-sm font-bold mb-2 text-[var(--danger)]">데이터 초기화</div>
+      <p class="text-xs text-[var(--ink-soft)] mb-2">모든 입출고 내역과 비용 기록을 삭제합니다. 관리자 비밀번호가 필요합니다.</p>
+      <button onclick="resetAllData()" class="btn-danger px-4 py-2 rounded-lg text-xs font-bold">전체 데이터 초기화</button>
+    </div>
+  </section>
+
+</div>
+
+<script>
+const FIREBASE_BASE = 'https://ts3pl-982ef-default-rtdb.firebaseio.com';
+const DATA_PATH = 'fcmaterial';
+const ADMIN_PASSWORD = '4656';
+
+let state = {
+  events: [],
+  costs: [],
+  settings: {
+    unloadFee: 5000,
+    storageFee: 800,
+    vatRate: 0.1,
+    supplier: { name: '(주)태성 - TS3PL', bizNo: '', ceo: '', address: '', phone: '' },
+    shipper: { name: '에프씨머티리얼' }
+  }
+};
+
+let saveTimer = null;
+
+function seedData(){ return {"settings":{"shipper":{"name":"에프씨머티리얼"},"unloadFee":5000,"storageFee":800,"vatRate":0.1,"supplier":{"name":"(주)태성 - TS3PL","bizNo":"","ceo":"","address":"","phone":""}},"events":[{"id":"fc-in-20261001","type":"in","date":"2026-10-01","time":"","product":"에프씨머티리얼","qty":9,"memo":"최초 입고 9PLT"}],"costs":[{"id":"fc-freight-20261001","date":"2026-10-01","desc":"입고 화물비","amount":120000}]}; }
+
+function won(n){
+  return Math.round(n).toLocaleString('ko-KR') + '원';
 }
-function showError(e){$('status').textContent=e.message;$('status').className='error'}
-async function loadFC(){try{$('status').textContent='자료를 불러오는 중입니다.';const res=await fetch('./fc-material.json?t='+Date.now(),{cache:'no-store'});if(!res.ok)throw Error('자료를 불러오지 못했습니다. 새로고침해 주세요.');fcData=await res.json();renderFC();$('status').className='';$('status').textContent='등록 자료 확인 완료 · '+fcToday()+' 기준';}catch(e){showError(e)}}
-$('from').value=fcToday().slice(0,7)+'-01';$('to').value=fcToday();$('to').max=fcToday();$('calculate').onclick=()=>{try{renderFC();$('status').textContent='정산 계산 완료';$('status').className=''}catch(e){showError(e)}};$('refresh').onclick=loadFC;loadFC();
-</script></body></html>
+// ---------- 날짜: 전부 한국시간(KST, UTC+9) 기준 ----------
+// 기기 시간대와 무관하게 항상 한국 날짜로 계산한다.
+// 날짜 문자열은 UTC 자정으로 파싱하므로 서머타임/시간대 영향을 받지 않는다.
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+function kstToday(){ return new Date(Date.now() + KST_OFFSET_MS).toISOString().slice(0,10); }
+function parseDay(s){ return new Date(s + 'T00:00:00Z'); }
+function fmtDay(d){ return d.toISOString().slice(0,10); }
+function addDay(d,n){ d.setUTCDate(d.getUTCDate()+n); return d; }
+function daysBetween(a,b){ return Math.round((parseDay(a)-parseDay(b))/86400000); }
+function todayStr(){ return kstToday(); }
+
+// ---------- Save (localStorage 항상 우선 저장 + Firebase는 보조 동기화) ----------
+const LOCAL_KEY = 'fcmaterial_wms_cache';
+let lastFirebaseError = '';
+
+
+let remoteETag = null, saveInFlight = null;
+function normalizeData(data){
+  const defaults = seedData().settings;
+  return {...data, events:Object.values(data.events||{}), costs:Object.values(data.costs||{}),
+    settings:{...defaults,...data.settings,supplier:{...defaults.supplier,...data.settings?.supplier}}};
+}
+async function loadData(){
+  setSyncStatus('loading'); lastFirebaseError='';
+  try {
+    const res=await fetch(FIREBASE_BASE+'/'+DATA_PATH+'.json',{headers:{'X-Firebase-ETag':'true'},cache:'no-store',signal:AbortSignal.timeout(15000)});
+    const data=await res.json();
+    if(!res.ok||data?.error)throw Error(data?.error||'HTTP '+res.status);
+    remoteETag=res.headers.get('ETag');
+    state=normalizeData(data||seedData());
+    localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
+    setSyncStatus('ok');
+    if(!data)document.getElementById('syncText').textContent='최초 입고 자료 준비됨 · 지금 저장을 눌러 등록';
+  } catch(e) {
+    remoteETag=null; lastFirebaseError=e.message;
+    try { state=normalizeData(JSON.parse(localStorage.getItem(LOCAL_KEY))||seedData()); }
+    catch(_) { state=normalizeData(seedData()); }
+    setSyncStatus('error');
+  }
+  renderAll();
+}
+function queueSave(){
+  state.lastModified=Date.now();
+  localStorage.setItem(LOCAL_KEY,JSON.stringify(state));
+  updateLastSavedLabel(); clearTimeout(saveTimer);
+  saveTimer=setTimeout(persist,600);
+}
+async function persist(){
+  if(saveInFlight){ await saveInFlight; return persist(); }
+  if(!remoteETag){lastFirebaseError='서버 연결을 확인한 뒤 새로고침해 주세요.';setSyncStatus('error');return false;}
+  const payload=JSON.stringify(state);
+  saveInFlight=(async()=>{
+    try {
+      setSyncStatus('loading');
+      const res=await fetch(FIREBASE_BASE+'/'+DATA_PATH+'.json',{
+        method:'PUT',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json','if-match':remoteETag,'X-Firebase-ETag':'true'},body:payload
+      });
+      if(res.status===412){remoteETag=null;throw Error('다른 기기에서 자료가 변경되었습니다. 새로고침 후 다시 입력해 주세요.');}
+      const data=await res.json();
+      if(!res.ok||data?.error)throw Error(data?.error||'HTTP '+res.status);
+      remoteETag=res.headers.get('ETag');
+      lastFirebaseError='';setSyncStatus('ok');return true;
+    }catch(e){lastFirebaseError=e.message;setSyncStatus('error');return false;}
+  })();
+  try{return await saveInFlight;}finally{saveInFlight=null;}
+}
+async function manualSave(){
+  clearTimeout(saveTimer);
+  state.lastModified=Date.now();
+  localStorage.setItem(LOCAL_KEY,JSON.stringify(state));updateLastSavedLabel();
+  const ok=await persist();
+  alert(ok?'저장되었습니다. (이 브라우저 + 클라우드 모두 저장됨)':'클라우드 저장 실패: '+lastFirebaseError+'\n입력 내용은 이 브라우저에 보관되어 있습니다.');
+}
+
+function updateLastSavedLabel(){
+  const el = document.getElementById('lastSavedText');
+  if(!el) return;
+  const now = new Date();
+  el.textContent = '마지막 저장 ' + now.toLocaleTimeString('ko-KR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+
+function setSyncStatus(status){
+  const dot = document.getElementById('syncDot');
+  const text = document.getElementById('syncText');
+  if(status === 'ok'){ dot.className='w-2 h-2 rounded-full bg-[var(--success)] inline-block'; text.textContent='클라우드 동기화됨'; }
+  else if(status === 'loading'){ dot.className='w-2 h-2 rounded-full bg-[var(--amber)] inline-block'; text.textContent='동기화중...'; }
+  else { dot.className='w-2 h-2 rounded-full bg-[var(--danger)] inline-block'; text.textContent='클라우드 연결 실패 · 저장 상태 확인 필요'; }
+}
+
+// ---------- Tabs ----------
+function switchTab(name){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.add('hidden'));
+  document.getElementById('tab-'+name).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.tab-btn[data-tab="${name}"]`).classList.add('active');
+  if(name === 'settlement') renderSettlement();
+}
+
+// ---------- Events (입출고) ----------
+function addEvent(type){
+  const prefix = type === 'in' ? 'in' : 'out';
+  const date = document.getElementById(prefix+'Date').value || todayStr();
+  const time = document.getElementById(prefix+'Time').value || '';
+  const product = document.getElementById(prefix+'Product').value.trim() || '에프씨머티리얼';
+  const qty = Number(document.getElementById(prefix+'Qty').value);
+  const memo = document.getElementById(prefix+'Memo').value.trim();
+
+  if(!Number.isSafeInteger(qty) || qty <= 0){
+    alert('PLT 수량을 올바르게 입력해주세요.');
+    return;
+  }
+
+  if(type==='out'){
+    const moves=state.events.concat({type,date,qty}).slice().sort((a,b)=>a.date.localeCompare(b.date)||(a.type==='in'?-1:1));
+    let balance=0;
+    for(const event of moves){balance+=event.type==='in'?event.qty:-event.qty;if(balance<0){alert('출고 수량이 해당 날짜의 재고를 초과합니다.');return;}}
+  }
+  state.events.push({
+    id: 'e'+Date.now()+Math.random().toString(36).slice(2,6),
+    type, date, time, product, qty, memo
+  });
+
+  document.getElementById(prefix+'Qty').value = '';
+  document.getElementById(prefix+'Memo').value = '';
+
+  queueSave();
+  renderAll();
+}
+
+function deleteEvent(id){
+  const pw = prompt('관리자 비밀번호를 입력하세요.');
+  if(pw !== ADMIN_PASSWORD){ if(pw !== null) alert('비밀번호가 올바르지 않습니다.'); return; }
+  state.events = state.events.filter(e => e.id !== id);
+  queueSave();
+  renderAll();
+}
+
+// ---------- Costs (화물비/기타) ----------
+function addCost(){
+  const date = document.getElementById('costDate').value || todayStr();
+  const desc = document.getElementById('costDesc').value.trim() || '기타비용';
+  const amount = parseInt(document.getElementById('costAmount').value);
+  if(!amount || amount <= 0){
+    alert('금액을 올바르게 입력해주세요.');
+    return;
+  }
+  state.costs.push({ id:'c'+Date.now()+Math.random().toString(36).slice(2,6), date, desc, amount });
+  document.getElementById('costDesc').value = '';
+  document.getElementById('costAmount').value = '';
+  queueSave();
+  renderAll();
+}
+
+function deleteCost(id){
+  const pw = prompt('관리자 비밀번호를 입력하세요.');
+  if(pw !== ADMIN_PASSWORD){ if(pw !== null) alert('비밀번호가 올바르지 않습니다.'); return; }
+  state.costs = state.costs.filter(c => c.id !== id);
+  queueSave();
+  renderAll();
+}
+
+// ---------- Config ----------
+function saveConfig(){
+  state.settings.unloadFee = parseInt(document.getElementById('cfgUnload').value) || 5000;
+  delete state.settings.outboundFee;
+  state.settings.storageFee = parseInt(document.getElementById('cfgStorage').value) || 800;
+  state.settings.vatRate = (parseFloat(document.getElementById('cfgVat').value) || 10) / 100;
+  state.settings.supplier = {
+    name: document.getElementById('cfgSupplierName').value.trim() || '(주)태성 - TS3PL',
+    bizNo: document.getElementById('cfgSupplierBiz').value.trim(),
+    ceo: document.getElementById('cfgSupplierCeo').value.trim(),
+    address: document.getElementById('cfgSupplierAddr').value.trim(),
+    phone: document.getElementById('cfgSupplierPhone').value.trim()
+  };
+  queueSave();
+  renderAll();
+  alert('설정이 저장되었습니다.');
+}
+
+function resetAllData(){
+  const pw = prompt('전체 데이터를 초기화합니다. 관리자 비밀번호를 입력하세요.');
+  if(pw !== ADMIN_PASSWORD){ if(pw !== null) alert('비밀번호가 올바르지 않습니다.'); return; }
+  if(!confirm('정말로 모든 입출고/비용 데이터를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+  state.events = [];
+  state.costs = [];
+  queueSave();
+  renderAll();
+}
+
+// ---------- Calculations ----------
+function currentStock(){
+  let bal = 0;
+  state.events.slice().sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time)).forEach(e=>{
+    bal += e.type === 'in' ? e.qty : -e.qty;
+  });
+  return bal;
+}
+
+function calcStorage(fromDate, toDate){
+  // 입고는 당일부터 보관료를 부과하고, 출고 당일은 차감 전 잔고로 부과한 뒤
+  // 재고 차감은 다음날부터 적용한다. (나인블랙키친 앱과 동일한 규칙)
+  const inDeltas = {};
+  const outDeltas = {};
+  state.events.forEach(e=>{
+    const d = e.type === 'in' ? (e.qty || 0) : -(e.qty || 0);
+    if(!d) return;
+    if(d > 0) inDeltas[e.date] = (inDeltas[e.date] || 0) + d;
+    else outDeltas[e.date] = (outDeltas[e.date] || 0) + d;
+  });
+  const dates = Object.keys(Object.assign({}, inDeltas, outDeltas)).sort();
+  if(dates.length === 0) return { total: 0, plDays: 0, segments: [] };
+
+  let cur = parseDay(dates[0]);
+  const end = parseDay(toDate);
+  let balance = 0;
+  const rate = state.settings.storageFee;
+
+  const segments = [];
+  let segBalance = null;
+  let segStart = null;
+  let prevDstr = null;
+
+  while(cur <= end){
+    const dstr = fmtDay(cur);
+
+    // 오늘 입고분은 오늘 보관료 계산에 바로 반영
+    if(inDeltas[dstr]) balance += inDeltas[dstr];
+    if(balance < 0) balance = 0;
+
+    if(dstr >= fromDate && dstr <= toDate){
+      if(segBalance === null){
+        segBalance = balance;
+        segStart = dstr;
+      } else if(balance !== segBalance){
+        segments.push({ balance: segBalance, start: segStart, end: prevDstr });
+        segBalance = balance;
+        segStart = dstr;
+      }
+      prevDstr = dstr;
+    }
+
+    // 오늘 출고분은 오늘 보관료 계산 이후에 반영 (차감은 다음날부터)
+    if(outDeltas[dstr]) balance += outDeltas[dstr];
+    if(balance < 0) balance = 0;
+
+    addDay(cur, 1);
+  }
+  if(segBalance !== null){
+    segments.push({ balance: segBalance, start: segStart, end: prevDstr });
+  }
+
+  segments.forEach(s => {
+    s.days = daysBetween(s.end, s.start) + 1;
+    s.fee = s.balance * s.days * rate;
+  });
+
+  const total = segments.reduce((sum,s)=>sum+s.fee, 0);
+  const plDays = segments.reduce((sum,s)=>sum+s.balance*s.days, 0);
+  return { total, plDays, segments };
+}
+
+// ---------- Rendering ----------
+function renderAll(){
+  renderGauge();
+  renderDashboard();
+  renderEventsTable();
+  renderCostsTable();
+  renderSettingsForm();
+  document.getElementById('stockHeadline').textContent = currentStock() + ' PLT';
+}
+
+function renderGauge(){
+  const stock = currentStock();
+  const gauge = document.getElementById('palletGauge');
+  gauge.innerHTML = '';
+  const showCount = Math.max(stock, 1);
+  const cap = Math.min(showCount, 60);
+  for(let i=0;i<cap;i++){
+    const chip = document.createElement('div');
+    chip.className = 'pallet-chip' + (i < stock ? '' : ' empty');
+    gauge.appendChild(chip);
+  }
+  document.getElementById('gaugeSubtext').textContent = stock + ' PLT 보관중 · 1PLT = ' + won(state.settings.storageFee) + '/일';
+}
+
+function renderDashboard(){
+  const stock = currentStock();
+  document.getElementById('statStock').textContent = stock + ' PLT';
+
+  const storage = calcStorage(getFirstEventDate(), todayStr());
+  document.getElementById('statStorage').textContent = won(storage.total);
+
+  const now = new Date();
+  const ym = kstToday().slice(0,7);
+  const inMonth = state.events.filter(e=>e.type==='in' && e.date.startsWith(ym)).reduce((s,e)=>s+e.qty,0);
+  const outMonth = state.events.filter(e=>e.type==='out' && e.date.startsWith(ym)).reduce((s,e)=>s+e.qty,0);
+  document.getElementById('statInMonth').textContent = inMonth + ' PLT';
+  document.getElementById('statOutMonth').textContent = outMonth + ' PLT';
+
+  const recent = state.events.slice().sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time)).slice(0,8);
+  const body = document.getElementById('recentEventsBody');
+  body.innerHTML = recent.map(e => `
+    <tr>
+      <td><span class="${e.type==='in'?'badge-in':'badge-out'}">${e.type==='in'?'입고':'출고'}</span></td>
+      <td class="tabular">${e.date} ${e.time||''}</td>
+      <td>${e.product}</td>
+      <td class="tabular">${e.qty}</td>
+      <td class="tabular">${won(e.qty * state.settings.unloadFee)}</td>
+      <td>${e.memo||''}</td>
+    </tr>`).join('') || `<tr><td colspan="6" class="text-center text-[var(--ink-soft)] py-6">등록된 내역이 없습니다.</td></tr>`;
+}
+
+function getFirstEventDate(){
+  if(state.events.length === 0) return todayStr();
+  return state.events.map(e=>e.date).sort()[0];
+}
+
+function renderEventsTable(){
+  const all = state.events.slice().sort((a,b)=>(b.date+b.time).localeCompare(a.date+a.time));
+  const body = document.getElementById('allEventsBody');
+  body.innerHTML = all.map(e => `
+    <tr>
+      <td><span class="${e.type==='in'?'badge-in':'badge-out'}">${e.type==='in'?'입고':'출고'}</span></td>
+      <td class="tabular">${e.date} ${e.time||''}</td>
+      <td>${e.product}</td>
+      <td class="tabular">${e.qty}</td>
+      <td class="tabular">${won(e.qty * state.settings.unloadFee)}</td>
+      <td>${e.memo||''}</td>
+      <td class="no-print"><button onclick="deleteEvent('${e.id}')" class="text-[var(--danger)] text-xs font-bold">삭제</button></td>
+    </tr>`).join('') || `<tr><td colspan="7" class="text-center text-[var(--ink-soft)] py-6">등록된 내역이 없습니다.</td></tr>`;
+}
+
+function renderCostsTable(){
+  const all = state.costs.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const body = document.getElementById('costsBody');
+  body.innerHTML = all.map(c => `
+    <tr>
+      <td class="tabular">${c.date}</td>
+      <td>${c.desc}</td>
+      <td class="tabular text-right">${won(c.amount)}</td>
+      <td class="no-print"><button onclick="deleteCost('${c.id}')" class="text-[var(--danger)] text-xs font-bold">삭제</button></td>
+    </tr>`).join('') || `<tr><td colspan="4" class="text-center text-[var(--ink-soft)] py-6">등록된 비용이 없습니다.</td></tr>`;
+}
+
+function renderSettingsForm(){
+  document.getElementById('cfgUnload').value = state.settings.unloadFee;
+  document.getElementById('cfgStorage').value = state.settings.storageFee;
+  document.getElementById('cfgVat').value = Math.round(state.settings.vatRate*100);
+  document.getElementById('cfgSupplierName').value = state.settings.supplier.name;
+  document.getElementById('cfgSupplierBiz').value = state.settings.supplier.bizNo;
+  document.getElementById('cfgSupplierCeo').value = state.settings.supplier.ceo;
+  document.getElementById('cfgSupplierAddr').value = state.settings.supplier.address;
+  document.getElementById('cfgSupplierPhone').value = state.settings.supplier.phone;
+}
+
+function setRange(kind){
+  const t = kstToday();
+  const Y = Number(t.slice(0,4)), Mo = Number(t.slice(5,7));
+  let from, to;
+  if(kind === 'thisMonth'){
+    from = new Date(Date.UTC(Y, Mo-1, 1));
+    to = parseDay(t);
+  } else if(kind === 'lastMonth'){
+    from = new Date(Date.UTC(Y, Mo-2, 1));
+    to = new Date(Date.UTC(Y, Mo-1, 0));
+  } else {
+    from = parseDay(getFirstEventDate());
+    to = parseDay(t);
+  }
+  document.getElementById('settleFrom').value = fmtDay(from);
+  document.getElementById('settleTo').value = fmtDay(to);
+  renderSettlement();
+}
+
+function renderSettlement(){
+  const from = document.getElementById('settleFrom').value || getFirstEventDate();
+  const to = document.getElementById('settleTo').value || todayStr();
+
+  const inEvents = state.events.filter(e => e.type==='in' && e.date>=from && e.date<=to);
+  const outEvents = state.events.filter(e => e.type==='out' && e.date>=from && e.date<=to);
+  const inQty = inEvents.reduce((s,e)=>s+e.qty,0);
+  const outQty = outEvents.reduce((s,e)=>s+e.qty,0);
+  const inFee = inQty * state.settings.unloadFee;
+  const outFee = outQty * state.settings.unloadFee;
+
+  const storage = calcStorage(from, to);
+
+  const costsInRange = state.costs.filter(c => c.date>=from && c.date<=to);
+  const costsTotal = costsInRange.reduce((s,c)=>s+c.amount,0);
+
+  const subtotal = inFee + outFee + storage.total + costsTotal;
+  const vat = subtotal * state.settings.vatRate;
+  const total = subtotal + vat;
+
+  document.getElementById('invoicePeriod').textContent = `기간: ${from} ~ ${to}`;
+  const sup = state.settings.supplier;
+  document.getElementById('supplierBlock').innerHTML = `
+    <div class="font-bold text-[var(--ink)]">${sup.name}</div>
+    ${sup.bizNo ? `<div>사업자등록번호 ${sup.bizNo}</div>` : ''}
+    ${sup.ceo ? `<div>대표 ${sup.ceo}</div>` : ''}
+    ${sup.address ? `<div>${sup.address}</div>` : ''}
+    ${sup.phone ? `<div>${sup.phone}</div>` : ''}
+  `;
+  document.getElementById('invoiceShipper').textContent = state.settings.shipper.name;
+
+  const rows = [];
+  if(inQty > 0) rows.push(['입고 하차비', `${inQty} PLT × ${won(state.settings.unloadFee)}`, won(inFee)]);
+  if(outQty > 0) rows.push(['출고 상차비', `${outQty} PLT × ${won(state.settings.unloadFee)}`, won(outFee)]);
+
+  storage.segments.filter(s => s.balance > 0).forEach(s => {
+    const label = s.start === s.end ? `보관료 (${s.start})` : `보관료 (${s.start} ~ ${s.end})`;
+    rows.push([label, `${s.balance} PLT 보관 × ${s.days}일 × ${won(state.settings.storageFee)}`, won(s.fee)]);
+  });
+
+  costsInRange.forEach(c => rows.push([c.desc, c.date, won(c.amount)]));
+
+  document.getElementById('invoiceBody').innerHTML = rows.map(r => `
+    <tr><td>${r[0]}</td><td class="text-[var(--ink-soft)]">${r[1]}</td><td class="text-right tabular">${r[2]}</td></tr>
+  `).join('') || `<tr><td colspan="3" class="text-center text-[var(--ink-soft)] py-6">해당 기간에 정산 항목이 없습니다.</td></tr>`;
+
+  document.getElementById('invoiceSubtotal').textContent = won(subtotal);
+  document.getElementById('invoiceVat').textContent = won(vat);
+  document.getElementById('invoiceTotal').textContent = won(total);
+}
+
+// ---------- Init ----------
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('inDate').value = todayStr();
+  document.getElementById('outDate').value = todayStr();
+  document.getElementById('costDate').value = todayStr();
+  loadData();
+});
+</script>
+</body>
+</html>
