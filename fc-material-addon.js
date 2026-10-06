@@ -32,6 +32,10 @@ if(!CLIENTS.some(c=>c.key==='fcmaterial')) CLIENTS.unshift({
           if (json && typeof json === 'object' && json.error) { err = String(json.error); json = null; }
         }
 
+        if (!err && c.schema === 'dailyLedger') {
+          try { json = NewHansol.normalize(json); }
+          catch (e) { err = e.message; json = null; }
+        }
         if (!err && c.schema === 'providence') {
           try {
             if (!json) throw new Error('개별 정산프로그램에서 서버 연결을 먼저 완료해 주세요.');

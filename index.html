@@ -68,7 +68,7 @@
     .num-table td, .num-table th { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148,163,184,0.10); white-space: nowrap; }
     .num-table tbody tr:hover { background: rgba(148,163,184,0.05); }
   </style>
-<script defer src="./fc-material-addon.js"></script></head>
+<script src="./newhansol-core.js"></script><script defer src="./fc-material-addon.js"></script></head>
 <body class="mesh-bg grain text-white min-h-screen">
 
   <div id="pwModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md">
@@ -295,6 +295,11 @@
     const ADMIN_PW = "4656";
 
     const CLIENTS = [
+      {
+        key: 'newhansol', name: '(주)뉴한솔', emoji: '📋',
+        accent: '#0d9488', accentRgb: '13,148,136', schema: 'dailyLedger', path: 'newhansol_data',
+        desc: '보관 1,000원/PLT·일 · 일별 보관 및 기타작업', link: './newhansol.html'
+      },
       {
         key: 'koreaprovidence', name: '한국프로바이던스', emoji: '🏢',
         accent: '#2dd4bf', accentRgb: '45,212,191', schema: 'providence', path: 'koreaprovidence_data',
@@ -667,7 +672,8 @@
     function calcClient(client, month) {
       const cacheKey = client.key + '|' + month;
       if (calcCache[cacheKey]) return calcCache[cacheKey];
-      const r = client.schema === 'providence' ? calcProvidence(client, month)
+      const r = client.schema === 'dailyLedger' ? calcDailyLedger(client, month)
+              : client.schema === 'providence' ? calcProvidence(client, month)
               : client.schema === 'wms'    ? calcWms(client, month)
               : client.schema === 'orders' ? calcOrders(client, month)
               :                              calcSettlement(client, month);
@@ -678,6 +684,12 @@
       return r;
     }
 
+
+    function calcDailyLedger(client, month) {
+      const range = monthRange(month), data = store[client.key];
+      if (!range || !data || !data.app) return {storage:0,inFee:0,outFee:0,etc:0,subtotal:0,vat:0,total:0};
+      return NewHansol.calculate(data, range.from, range.to);
+    }
 
     // 개별 한국프로바이던스 앱과 동일한 계산 엔진. 기존 업체 계산과 독립적이다.
     const Providence = (() => {
@@ -748,6 +760,10 @@ function calculate(d,start,end){
           if (json && typeof json === 'object' && json.error) { err = String(json.error); json = null; }
         }
 
+        if (!err && c.schema === 'dailyLedger') {
+          try { json = NewHansol.normalize(json); }
+          catch (e) { err = e.message; json = null; }
+        }
         if (!err && c.schema === 'providence') {
           try {
             if (!json) throw new Error('개별 정산프로그램에서 서버 연결을 먼저 완료해 주세요.');
@@ -798,6 +814,9 @@ function calculate(d,start,end){
           toArray(d.logs).forEach(l => { if (l.time) months.add(String(l.time).substring(0, 7)); });
           Object.keys(d.dailyPltLog || {}).forEach(x => months.add(x.substring(0, 7)));
           Object.keys(d.manualStorageLog || {}).forEach(x => months.add(x.substring(0, 7)));
+        } else if (c.schema === 'dailyLedger') {
+          Object.keys(d.storage || {}).forEach(date => months.add(date.slice(0,7)));
+          toArray(d.works).forEach(e => months.add(e.date.slice(0,7)));
         } else if (c.schema === 'providence') {
           toArray(d.entries).forEach(e => months.add(e.date.slice(0,7)));
         } else if (c.schema === 'orders') {
@@ -1059,7 +1078,15 @@ function calculate(d,start,end){
       const td = a => `<tr>${a.map((t, i) => `<td class="${i ? 'text-right' : 'text-left'} text-slate-300">${t}</td>`).join('')}</tr>`;
       let head = '', body = '';
 
-      if (c.schema === 'providence') {
+      if (c.schema === 'dailyLedger') {
+        head = th(['날짜 / 항목', '산출 내역', '금액']);
+        if (range && data.app) {
+          const result = NewHansol.calculate(data, range.from, range.to);
+          body = result.days.map(d => td([d.date + ' · 보관', d.qty + ' PLT × ' + comma(d.rate) + '원', comma(d.amount)])).join('');
+          body += result.works.map(d => td([d.date + ' · ' + esc(d.desc), d.qty + ' × ' + comma(d.rate) + '원', comma(d.amount)])).join('');
+        }
+        if (!body) body = '<tr><td colspan="3">해당 월에 등록된 자료가 없습니다.</td></tr>';
+      } else if (c.schema === 'providence') {
         head = th(['일자 / 항목', '계산 근거', '금액']);
         if (range && data.entries) {
           const r = Providence.calculate(data, range.from, range.to);
