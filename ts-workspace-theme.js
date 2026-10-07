@@ -8,7 +8,7 @@
  const app=document.querySelector('#appContent,#app')||document.body;
  const headings=[...app.querySelectorAll('main h2,main h3,#appContent h2,#appContent h3')].filter(el=>!el.closest('[id$="Modal"],#receipt,#printSheet,#gate'));
  const choices=[];
- for(const heading of headings){if(choices.length>=5)break;const label=heading.textContent.trim().replace(/[📊📋✏️🔍📦]/gu,'').trim();if(!label||choices.some(x=>x.label===label))continue;const id=heading.id||('ts-section-'+choices.length);if(!heading.id)heading.id=id;choices.push({id,label});}
+ for(const heading of headings){if(choices.length>=5)break;const label=(heading.id==='receiptMonth'?'정산 내역서':heading.textContent).trim().replace(/[📊📋✏️🔍📦]/gu,'').trim();if(!label||choices.some(x=>x.label===label))continue;const id=heading.id||('ts-section-'+choices.length);if(!heading.id)heading.id=id;choices.push({id,label});}
  const nav=document.querySelector('nav.tabs');
  if(nav){choices.length=0;[...nav.querySelectorAll('button')].forEach((b,i)=>{if(!b.id)b.id='ts-tab-'+i;choices.push({id:b.id,label:b.textContent.trim(),button:true});});}
  const sidebar=document.createElement('aside');sidebar.className='ts-side no-print';
