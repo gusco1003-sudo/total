@@ -13,7 +13,7 @@ if(!CLIENTS.some(c=>c.key==='fcmaterial')) CLIENTS.unshift({
 
       const noCache = '?t=' + Date.now();
       const results = await Promise.allSettled(
-        CLIENTS.map(c => fetch(c.dataUrl ? `${c.dataUrl}${noCache}` : `${FIREBASE_BASE}/${c.path}.json${noCache}`, {signal:AbortSignal.timeout(15000)}))
+        CLIENTS.map(c => c.key === 'jinjubulgyosa' ? fetchJinjuForTotal() : fetch(c.dataUrl ? `${c.dataUrl}${noCache}` : `${FIREBASE_BASE}/${c.path}.json${noCache}`, {signal:AbortSignal.timeout(15000)}))
       );
 
       for (let i = 0; i < CLIENTS.length; i++) {
