@@ -49,9 +49,11 @@ window.addEventListener('message',event=>{
 });
 async function publishLatest(){const raw=C.normalize(await bridge('read'));await A.write('neulbom_data/source',raw);await load();}
 document.querySelectorAll('.admin-only').forEach(el=>el.hidden=viewer);
-if(viewer){$('loginTitle').textContent='늘봄 조회 로그인';$('loginHelp').textContent='TS3PL에서 발급받은 아이디와 비밀번호를 입력하세요.';$('viewerLogin').hidden=false;}
-$('googleLogin').onclick=()=>run(()=>A.loginOwner());
-$('viewerLogin').onsubmit=e=>{e.preventDefault();run(async()=>{await A.auth.signInWithEmailAndPassword(A.email($('username').value.trim()),$('password').value);$('password').value='';});};
+$('viewerLogin').hidden=false;
+if(viewer){$('loginTitle').textContent='늘봄 조회 로그인';$('loginHelp').textContent='TS3PL에서 발급받은 아이디와 비밀번호를 입력하세요.';}
+else{$('loginHelp').textContent='관리자 아이디와 비밀번호를 입력해 주세요.';$('username').value='ts3pl';}
+$('viewerLogin').onsubmit=e=>{e.preventDefault();run(async()=>{const name=$('username').value.trim(),pw=$('password').value;
+ if(viewer)await A.auth.signInWithEmailAndPassword(A.email(name),pw);else await A.loginOwner(name,pw);$('password').value='';});};
 $('logout').onclick=()=>run(async()=>{clearData();await A.auth.signOut();});
 $('query').onclick=()=>run(async()=>{render();await load();});$('print').onclick=()=>window.print();
 $('thisMonth').onclick=()=>run(async()=>{$('from').value=C.today().slice(0,7)+'-01';$('to').value=C.today();render();});
@@ -82,7 +84,7 @@ $('accountForm').onsubmit=e=>{e.preventDefault();run(async()=>{const b=e.submitt
  }finally{b.disabled=false;}});};
 $('accounts').onclick=e=>run(async()=>{const uid=e.target.closest('button')?.dataset.account;if(!uid||!accountData[uid])return;await A.write('neulbomAccess/'+uid,{...accountData[uid],active:!accountData[uid].active});await loadAccounts();status('조회 계정 사용 상태를 변경했습니다.');});
 A.auth.onAuthStateChanged(user=>{clearData();$('loginPanel').hidden=!!user;$('logout').hidden=!user;if(!user){status('로그인해 주세요.');return;}
- if(!viewer&&!A.owner(user)){$('loginPanel').hidden=false;status('관리자 계정이 아닙니다. 로그아웃 후 Google 관리자 계정으로 로그인해 주세요.',true);return;}
+ if(!viewer&&!A.owner(user)){$('loginPanel').hidden=false;status('관리자 계정이 아닙니다. 로그아웃 후 관리자 아이디로 로그인해 주세요.',true);return;}
  $('accessLabel').textContent=viewer?'화주 조회 전용':'TS3PL 관리자';run(async()=>{await load();await loadAccounts();});
 });
 $('from').value=C.today().slice(0,7)+'-01';$('to').value=C.today();resetEntry();

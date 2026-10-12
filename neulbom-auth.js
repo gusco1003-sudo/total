@@ -2,7 +2,7 @@
 const config={apiKey:'AIzaSyBvjM1aD-bmGTsG86-9_2H_HtQNwXdmpvw',authDomain:'ts3pl-982ef.firebaseapp.com',projectId:'ts3pl-982ef',appId:'1:863439274504:web:ea99901657e04c8d5a07bd'};
 const app=firebase.apps.find(a=>a.name==='neulbom')||firebase.initializeApp(config,'neulbom'),auth=app.auth();
 const ready=new Promise(resolve=>{const off=auth.onAuthStateChanged(()=>{off();resolve();});});
-const owner=u=>!!u&&u.email==='gusco1003@gmail.com'&&u.emailVerified&&u.providerData.some(p=>p.providerId==='google.com');
+const owner=u=>!!u&&u.uid==='5svz9q2WyqeKYAQZzlsNw1ZGtb62';
 async function request(path,options={}){
  await ready;const user=auth.currentUser;if(!user)throw Error('늘봄 관리자 로그인이 필요합니다.');
  const token=await user.getIdToken();
@@ -12,7 +12,7 @@ async function request(path,options={}){
 }
 async function read(path){return (await request(path)).json();}
 async function write(path,value){if(!owner(auth.currentUser))throw Error('관리자만 변경할 수 있습니다.');return (await request(path,{method:'PUT',body:JSON.stringify(value)})).json();}
-async function loginOwner(){const p=new firebase.auth.GoogleAuthProvider();p.setCustomParameters({prompt:'select_account'});const result=await auth.signInWithPopup(p);if(!owner(result.user)){await auth.signOut();throw Error('등록된 TS3PL 관리자 Google 계정을 선택하세요.');}}
+async function loginOwner(username,password){const result=await auth.signInWithEmailAndPassword(email(username),password);if(!owner(result.user)){await auth.signOut();throw Error('TS3PL 관리자 아이디로 로그인해 주세요.');}}
 function email(username){if(!/^[a-z0-9][a-z0-9_-]{3,31}$/.test(username))throw Error('아이디는 영문 소문자·숫자·_·- 4~32자로 입력하세요.');return username+'@neulbom.ts3pl.invalid';}
 async function issue(username,password,label){
  if(!owner(auth.currentUser))throw Error('관리자 로그인이 필요합니다.');

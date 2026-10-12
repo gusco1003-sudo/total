@@ -68,7 +68,7 @@
     .num-table td, .num-table th { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148,163,184,0.10); white-space: nowrap; }
     .num-table tbody tr:hover { background: rgba(148,163,184,0.05); }
   </style>
-<script src="./cost-ledger-core.js"></script><script src="./newhansol-core.js"></script><script defer src="./fc-material-addon.js?v=20261007-rollback"></script></head>
+<script src="./cost-ledger-core.js"></script><script src="./newhansol-core.js"></script><script defer src="./fc-material-addon.js?v=20261012-neulbom1"></script><script src="./neulbom-core.js?v=1"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=2"></script><script defer src="./neulbom-total.js?v=2"></script></head>
 <body class="mesh-bg grain text-white min-h-screen">
 
   <div id="pwModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md">
@@ -295,6 +295,7 @@
     const ADMIN_PW = "4656";
 
     const CLIENTS = [
+      {key:'neulbom',name:'늘봄',emoji:'🌿',accent:'#10b981',accentRgb:'16,185,129',schema:'neulbom',path:'neulbom_data/source',desc:'한진택배 2,400원/건 · 부가세 별도 · 입출고 재고',link:'./neulbom.html'},
       {
         key:'foodtravel', name:'푸드트래블', emoji:'📦', accent:'#0891b2', accentRgb:'8,145,178', schema:'costLedger', path:'foodtravel_data', desc:'보관 700원/PLT·일 · 일별 보관 및 기타작업', link:'./foodtravel.html'
       }, {
@@ -676,7 +677,8 @@
     function calcClient(client, month) {
       const cacheKey = client.key + '|' + month;
       if (calcCache[cacheKey]) return calcCache[cacheKey];
-      const r = ['dailyLedger','costLedger'].includes(client.schema) ? calcDailyLedger(client, month)
+      const r = client.schema === 'neulbom' ? calcNeulbom(client, month)
+              : ['dailyLedger','costLedger'].includes(client.schema) ? calcDailyLedger(client, month)
               : client.schema === 'providence' ? calcProvidence(client, month)
               : client.schema === 'wms'    ? calcWms(client, month)
               : client.schema === 'orders' ? calcOrders(client, month)
@@ -689,6 +691,12 @@
     }
 
 
+    function calcNeulbom(client, month) {
+      const range=monthRange(month),d=store[client.key];
+      if(!range||!d?.app)return {storage:0,inFee:0,outFee:0,etc:0,subtotal:0,vat:0,total:0};
+      const r=Neulbom.calculate(d,range.from,range.to);
+      return {...r,note:'택배 '+comma(r.parcel_boxes)+'건 × 2,400원 · 별도 출고 무료 · 갱신 '+d.updated_at.slice(0,16).replace('T',' ')};
+    }
     function calcDailyLedger(client, month) {
       const range = monthRange(month), data = store[client.key];
       if (!range || !data || !data.app) return {storage:0,inFee:0,outFee:0,etc:0,subtotal:0,vat:0,total:0};
@@ -745,7 +753,7 @@ function calculate(d,start,end){
 
       const noCache = '?t=' + Date.now();
       const results = await Promise.allSettled(
-        CLIENTS.map(c => fetch(`${FIREBASE_BASE}/${c.path}.json${noCache}`, {signal:AbortSignal.timeout(15000)}))
+        CLIENTS.map(c => c.schema==='neulbom' ? fetchNeulbomForTotal() : fetch(`${FIREBASE_BASE}/${c.path}.json${noCache}`, {signal:AbortSignal.timeout(15000)}))
       );
 
       for (let i = 0; i < CLIENTS.length; i++) {
@@ -776,6 +784,7 @@ function calculate(d,start,end){
             if (json.vat !== 'exclusive') throw new Error('부가세 별도 10% 자료를 확인해 주세요.');
           } catch (e) { err = e.message; json = null; }
         }
+        if (!err && c.schema==='neulbom') {try {json=Neulbom.normalize(json);}catch(e){err=e.message;json=null;}}
         syncErr[c.key] = err;
         store[c.key] = (json && typeof json === 'object') ? json : {};
 
@@ -821,6 +830,9 @@ function calculate(d,start,end){
         } else if (['dailyLedger','costLedger'].includes(c.schema)) {
           Object.keys(d.storage || {}).forEach(date => months.add(date.slice(0,7)));
           toArray(d.works).forEach(e => months.add(e.date.slice(0,7)));
+        } else if (c.schema === 'neulbom') {
+          Object.keys(d.shipments||{}).forEach(x=>months.add(x.slice(0,7)));
+          toArray(d.entries).forEach(e=>months.add(e.day.slice(0,7)));
         } else if (c.schema === 'providence') {
           toArray(d.entries).forEach(e => months.add(e.date.slice(0,7)));
         } else if (c.schema === 'orders') {
@@ -1082,7 +1094,14 @@ function calculate(d,start,end){
       const td = a => `<tr>${a.map((t, i) => `<td class="${i ? 'text-right' : 'text-left'} text-slate-300">${t}</td>`).join('')}</tr>`;
       let head = '', body = '';
 
-      if (['dailyLedger','costLedger'].includes(c.schema)) {
+      if (c.schema === 'neulbom') {
+        head=th(['날짜 / 항목','산출 내역','공급가액']);
+        if(range && data.app){const r=Neulbom.calculate(data,range.from,range.to);
+          body=r.daily.filter(d=>d.parcel_boxes).map(d=>td([d.date+' · 한진택배',comma(d.parcel_boxes)+'건 × 2,400원',comma(d.supply)])).join('');
+          body+=r.entries.filter(e=>!e.voided).map(e=>td([e.day+' · '+(e.kind==='receipt'?'입고':'별도 출고'),esc(e.party)+' · 유록스 '+comma(e.goods_boxes)+'박스 / '+comma(e.pallets)+'PLT / 호스 '+comma(e.hose_boxes)+'박스','0'])).join('');
+        }
+        if(!body)body='<tr><td colspan="3">해당 월 자료가 없습니다.</td></tr>';
+      } else if (['dailyLedger','costLedger'].includes(c.schema)) {
         head = th(['날짜 / 항목', '산출 내역', '금액']);
         if (range && data.app) {
           const result = (c.schema==='costLedger'?CostLedger:NewHansol).calculate(data, range.from, range.to);

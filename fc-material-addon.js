@@ -13,7 +13,7 @@ if(!CLIENTS.some(c=>c.key==='fcmaterial')) CLIENTS.unshift({
 
       const noCache = '?t=' + Date.now();
       const results = await Promise.allSettled(
-        CLIENTS.map(c => fetch(c.dataUrl ? `${c.dataUrl}${noCache}` : `${FIREBASE_BASE}/${c.path}.json${noCache}`, {signal:AbortSignal.timeout(15000)}))
+        CLIENTS.map(c => c.schema==='neulbom' ? fetchNeulbomForTotal() : fetch(c.dataUrl ? `${c.dataUrl}${noCache}` : `${FIREBASE_BASE}/${c.path}.json${noCache}`, {signal:AbortSignal.timeout(15000)}))
       );
 
       for (let i = 0; i < CLIENTS.length; i++) {
@@ -44,6 +44,7 @@ if(!CLIENTS.some(c=>c.key==='fcmaterial')) CLIENTS.unshift({
             if (json.vat !== 'exclusive') throw new Error('부가세 별도 10% 자료를 확인해 주세요.');
           } catch (e) { err = e.message; json = null; }
         }
+        if (!err && c.schema==='neulbom') {try {json=Neulbom.normalize(json);}catch(e){err=e.message;json=null;}}
         syncErr[c.key] = err;
         store[c.key] = (json && typeof json === 'object') ? json : {};
 
