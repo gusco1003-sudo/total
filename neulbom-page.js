@@ -52,8 +52,8 @@ document.querySelectorAll('.admin-only').forEach(el=>el.hidden=viewer);
 $('viewerLogin').hidden=false;
 if(viewer){$('loginTitle').textContent='늘봄 조회 로그인';$('loginHelp').textContent='TS3PL에서 발급받은 아이디와 비밀번호를 입력하세요.';}
 else{$('loginHelp').textContent='관리자 아이디와 비밀번호를 입력해 주세요.';$('username').value='ts3pl';}
-$('viewerLogin').onsubmit=e=>{e.preventDefault();run(async()=>{const name=$('username').value.trim(),pw=$('password').value;
- if(viewer)await A.auth.signInWithEmailAndPassword(A.email(name),pw);else await A.loginOwner(name,pw);$('password').value='';});};
+$('viewerLogin').onsubmit=e=>{e.preventDefault();const button=e.submitter;if(button.disabled)return;run(async()=>{button.disabled=true;button.textContent='로그인 중…';status('로그인 정보를 확인하고 있습니다.');try{const name=$('username').value.trim(),pw=$('password').value;
+ if(viewer)await A.auth.signInWithEmailAndPassword(A.email(name),pw);else await A.loginOwner(name,pw);$('password').value='';}finally{button.disabled=false;button.textContent='조회하기';}});};
 $('logout').onclick=()=>run(async()=>{clearData();await A.auth.signOut();});
 $('query').onclick=()=>run(async()=>{render();await load();});$('print').onclick=()=>window.print();
 $('thisMonth').onclick=()=>run(async()=>{$('from').value=C.today().slice(0,7)+'-01';$('to').value=C.today();render();});

@@ -1,6 +1,7 @@
 (function(){'use strict';
 const config={apiKey:'AIzaSyBvjM1aD-bmGTsG86-9_2H_HtQNwXdmpvw',authDomain:'ts3pl-982ef.firebaseapp.com',projectId:'ts3pl-982ef',appId:'1:863439274504:web:ea99901657e04c8d5a07bd'};
-const app=firebase.apps.find(a=>a.name==='neulbom')||firebase.initializeApp(config,'neulbom'),auth=app.auth();
+const appName=document.body.dataset.mode==='viewer'?'neulbom-viewer':'neulbom-admin-password';
+const app=firebase.apps.find(a=>a.name===appName)||firebase.initializeApp(config,appName),auth=app.auth();
 const ready=new Promise(resolve=>{const off=auth.onAuthStateChanged(()=>{off();resolve();});});
 const owner=u=>!!u&&u.uid==='5svz9q2WyqeKYAQZzlsNw1ZGtb62';
 async function request(path,options={}){
