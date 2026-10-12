@@ -1,0 +1,11 @@
+<!doctype html><html lang="ko"><meta charset="utf-8"><title>늘봄 로그인 통신 점검</title>
+<script>
+const nativeFetch=window.fetch.bind(window); window.fetch=async (...args)=>{let u=new URL(typeof args[0]==='string'?args[0]:args[0].url); try{let r=await nativeFetch(...args); document.querySelector('pre').textContent+='\n'+u.host+u.pathname+' status '+r.status; return r;}catch(e){document.querySelector('pre').textContent+='\n'+u.host+u.pathname+' '+e.name+' '+e.message;throw e;}};
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<form><label>아이디<input id="user" value="ts3pl"></label><label>비밀번호<input type="password" id="pw" autocomplete="current-password"></label><button>SDK 로그인 점검</button><button type="button" id="rest">REST 로그인 점검</button></form><pre>통신 결과 (인증정보 기록 안 함)</pre>
+<script>
+const key='AIzaSyBvjM1aD-bmGTsG86-9_2H_HtQNwXdmpvw'; const auth=firebase.initializeApp({apiKey:key,authDomain:'ts3pl-982ef.firebaseapp.com',projectId:'ts3pl-982ef'},'diagnostic').auth();
+document.querySelector('form').onsubmit=async e=>{e.preventDefault();try{await auth.signInWithEmailAndPassword(document.querySelector('#user').value+'@neulbom.ts3pl.invalid',document.querySelector('#pw').value);document.querySelector('pre').textContent+='\nSDK 로그인 성공';}catch(e){document.querySelector('pre').textContent+='\nSDK '+e.code;}};
+document.querySelector('#rest').onclick=async()=>{try{let r=await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key='+key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:document.querySelector('#user').value+'@neulbom.ts3pl.invalid',password:document.querySelector('#pw').value,returnSecureToken:true})});let j=await r.json();document.querySelector('pre').textContent+='\nREST '+(j.idToken?'로그인 성공':j.error?.message||'실패');}catch(e){document.querySelector('pre').textContent+='\nREST '+e.message;}};
+</script></html>
