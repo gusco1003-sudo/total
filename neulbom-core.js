@@ -14,6 +14,8 @@ function normalize(raw){
   if(!e||!Number.isSafeInteger(e.id)||ids.has(e.id)||!date(e.day)||!['receipt','outbound'].includes(e.kind)||!['goods_boxes','pallets','hose_boxes'].every(k=>integer(e[k]))||![0,1,false,true].includes(e.voided))throw Error('입출고 기록 또는 중복 번호를 확인하세요.');
   ids.add(e.id);
  }
+ d.manual_dispatches=Array.isArray(d.manual_dispatches)?d.manual_dispatches:Object.values(d.manual_dispatches||{});
+ for(const e of d.manual_dispatches)if(!integer(e.id)||!date(e.day)||!integer(e.boxes)||!integer(e.listed_boxes)||!Number.isSafeInteger(e.revision)||![0,1].includes(e.voided))throw Error('수동 출고 기록을 확인하세요.');
  return d;
 }
 function calculate(raw,from,to,asOf=today()){
@@ -33,7 +35,7 @@ function calculate(raw,from,to,asOf=today()){
 const HOSE_PACK=25;
 function stockNet(raw,until=today()){
  const d=normalize(raw);let goods=0,hose=0;
- for(const [day,n] of Object.entries(d.shipments))if(day<=until)goods-=n;
+ for(const [day,n] of Object.entries(d.shipments))if(day<=until){goods-=n;hose-=n;}
  for(const e of d.entries)if(!e.voided&&e.day<=until){const sign=e.kind==='receipt'?1:-1;goods+=sign*e.goods_boxes;hose+=sign*e.hose_boxes*HOSE_PACK;}
  return {goods,hose};
 }
@@ -46,7 +48,7 @@ function normalizeInventory(raw){
 }
 function inventory(raw,snapshot,asOf=today()){
  const s=normalizeInventory(snapshot),net=stockNet(raw,asOf),fallback=calculate(raw,asOf,asOf,asOf).remaining;
- const value=key=>s[key]&&s[key].day<=asOf?s[key].quantity+net[key]-s[key].baseline:(key==='goods'?fallback:null);
+ const value=key=>s[key]&&s[key].day<=asOf?s[key].quantity+net[key]-(s[key].through_day?stockNet(raw,s[key].day)[key]:s[key].baseline):(key==='goods'?fallback:null);
  const goods=value('goods'),hose=value('hose');
  return {goods,hose,hose_pack:HOSE_PACK,hose_boxes:hose==null||hose<0?null:Math.floor(hose/HOSE_PACK),hose_loose:hose==null||hose<0?null:hose%HOSE_PACK,updated_at:s.updated_at||null};
 }

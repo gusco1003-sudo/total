@@ -5,7 +5,7 @@ let data=null,settings={},stock={revision:0},stockDirty=false,editing=null,entry
 let popup=null,channel='',pending=new Map(),connected=false;
 const sourceOrigin='https://bless-reshuffle-vest.ngrok-free.dev';
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
-function clearData(){epoch++;data=null;settings={};stock={revision:0};stockDirty=false;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','entries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
+function clearData(){epoch++;data=null;settings={};stock={revision:0};stockDirty=false;manualPreview=null;$('manualForm').reset();$('manualDay').value=C.today();$('manualCommit').disabled=true;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','entries','manualEntries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
 async function run(fn){try{await fn();}catch(e){status(e.message||'처리에 실패했습니다.',true);}}
 function amountCell(v){return '<td>'+money(v)+'</td>';}
 function resetEntry(){editing=null;entryKey=crypto.randomUUID();$('entryForm').reset();$('entryDay').value=C.today();$('entrySave').textContent='기록 추가';}
@@ -23,11 +23,12 @@ function render(){
  const stale=Date.now()-Date.parse(data.updated_at)>15*60*1000;
  const warnings=[...r.warnings];if(stale)warnings.push('자동 동기화가 지연됐습니다. 마지막 갱신 시점의 자료입니다.');if(current.goods<0||current.hose<0)warnings.push('재고가 음수입니다. 입출고 기록을 확인해 주세요.');
  $('warnings').textContent=warnings.join('\n');$('warnings').hidden=!warnings.length;
- $('daily').innerHTML=[...r.daily].reverse().map(b=>'<tr><td>'+b.date+'</td>'+[b.received,b.parcel_boxes,b.other_boxes,b.hose_boxes,b.remaining,b.supply,b.vat,b.total].map(amountCell).join('')+'</tr>').join('');
- $('sum').innerHTML='<tr><td>기간 합계</td>'+[r.received,r.parcel_boxes,r.other_boxes,r.hose_boxes,r.closing,r.subtotal,r.vat,r.total].map(amountCell).join('')+'</tr>';
+ $('daily').innerHTML=[...r.daily].reverse().map(b=>'<tr><td>'+b.date+'</td>'+[b.received,b.parcel_boxes,b.other_boxes,b.hose_boxes*25+b.parcel_boxes,b.remaining,b.supply,b.vat,b.total].map(amountCell).join('')+'</tr>').join('');
+ $('sum').innerHTML='<tr><td>기간 합계</td>'+[r.received,r.parcel_boxes,r.other_boxes,r.hose_boxes*25+r.parcel_boxes,r.closing,r.subtotal,r.vat,r.total].map(amountCell).join('')+'</tr>';
  $('period').textContent=$('from').value+' ~ '+$('to').value+' · 택배 '+money(r.parcel_boxes)+'건 · 합계 '+money(r.total)+'원';
  $('entries').innerHTML=r.entries.map(e=>'<tr class="'+(e.voided?'void':'')+'"><td>'+e.day+'</td><td>'+(e.kind==='receipt'?'입고':'별도 출고')+(e.voided?' (취소)':'')+'</td><td>'+escapeHTML(e.party)+'</td>'+[e.goods_boxes,e.pallets,e.hose_boxes].map(amountCell).join('')+'<td class="note">'+escapeHTML(e.note)+'</td>'+(!viewer?'<td><button data-edit="'+e.id+'">수정</button> <button data-void="'+e.id+'">'+(e.voided?'복원':'취소')+'</button></td>':'')+'</tr>').join('')||'<tr><td colspan="8">해당 기간의 기록이 없습니다.</td></tr>';
  $('palletSize').value=settings.boxesPerPallet||'';
+ $('manualEntries').innerHTML=data.manual_dispatches.filter(e=>e.day>=$('from').value&&e.day<=$('to').value).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id).map(e=>'<tr class="'+(e.voided?'void':'')+'"><td>'+e.day+'</td><td>'+escapeHTML(e.party||'수동 택배')+'</td><td>'+money(e.listed_boxes)+'</td><td>'+money(e.boxes)+'</td><td>'+money(e.boxes)+'</td><td>'+money(e.boxes*2640)+'</td><td>'+escapeHTML(e.note)+'</td>'+(!viewer?'<td><button data-manual="'+e.id+'">'+(e.voided?'복원':'취소')+'</button></td>':'')+'</tr>').join('')||'<tr><td colspan="8">수동 택배 출고 기록이 없습니다.</td></tr>';
 }
 async function load(){
  if(loading||!A.auth.currentUser)return;loading=true;const stamp=epoch;
@@ -84,11 +85,32 @@ $('stockForm').onsubmit=e=>{e.preventDefault();run(async()=>{
   const previous=C.normalizeInventory(latest.value);
   if(previous.revision!==stock.revision)throw Error('다른 화면에서 재고가 변경됐습니다. 최신 재고 불러오기를 누른 뒤 다시 입력하세요.');
   const day=C.today(),net=C.stockNet(fresh,day),next={...previous,revision:previous.revision+1,updated_at:new Date().toISOString()};
-  for(const key of ['goods','hose'])if(values[key]!=='')next[key]={quantity:Number(values[key]),baseline:net[key],day};
+  for(const key of ['goods','hose'])if(values[key]!=='')next[key]={quantity:Number(values[key]),baseline:net[key],day,...(key==='hose'?{parcel_rule:1}:{}),...(key==='goods'&&$('stockThroughDay').checked?{through_day:true}:{})};
   await A.compareWrite('neulbom_data/inventory',next,latest.etag);
   stockDirty=false;stock=next;await load();status('재고만 저장했습니다. 화주 조회 화면과 화주라운지에 반영되며 정산 금액은 그대로입니다.');
  }finally{b.disabled=false;}
 });};
+let manualPreview=null;
+$('manualForm').addEventListener('input',()=>{manualPreview=null;$('manualCommit').disabled=true;$('manualResult').textContent='내용이 변경됐습니다. 출고 미리보기를 다시 확인하세요.';});
+$('manualForm').onsubmit=e=>{e.preventDefault();run(async()=>{
+ if(viewer||!A.owner(A.auth.currentUser))throw Error('관리자 로그인이 필요합니다.');
+ $('manualPreview').disabled=true;manualPreview=null;$('manualCommit').disabled=true;
+ try{
+  const body={day:$('manualDay').value,party:$('manualParty').value,note:$('manualNote').value,tracking:$('manualTracking').value};
+  const file=$('manualFile').files[0];
+  if(file){if(file.size>10*1024*1024)throw Error('파일은 10MB 이하로 선택하세요.');const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));body.file={name:file.name,content:btoa(binary)};}
+  const result=await bridge('manual-preview',body);manualPreview=result;
+  $('manualResult').textContent=result.day+' 출고 · 신규 '+money(result.boxes)+'박스 / 호스 '+money(result.hose_pieces)+'개 차감 / 택배비 '+money(result.total)+'원 (부가세 포함)\n이미 등록 '+money(result.already)+'개 · 파일 내 중복 '+money(result.duplicate_rows)+'개 제외\n유록스 실사값에 오늘 출고가 포함돼 있으면 유록스는 다시 차감하지 않습니다.';
+  $('manualCommit').disabled=!result.boxes;status('미리보기를 확인한 뒤 출고 반영을 누르세요.');
+ }finally{$('manualPreview').disabled=false;}
+});};
+$('manualCommit').onclick=()=>run(async()=>{
+ if(!manualPreview)return;$('manualCommit').disabled=true;
+ try{await bridge('manual-save',{token:manualPreview.token});manualPreview=null;await publishLatest();$('manualForm').reset();$('manualDay').value=C.today();$('manualResult').textContent='출고 기록·재고·택배비 반영 완료.';status('수동 택배 출고를 반영했습니다. 같은 송장은 한 번만 계산합니다.');}
+ catch(e){$('manualCommit').disabled=false;throw e;}
+});
+$('manualEntries').onclick=e=>run(async()=>{const id=Number(e.target.closest('button')?.dataset.manual),entry=data?.manual_dispatches.find(x=>x.id===id);if(!entry)return;await bridge('manual-void',{revision:entry.revision,voided:!entry.voided},id);await publishLatest();status('수동 택배 출고 상태를 변경했습니다. 자동 출고에도 있는 송장은 계속 계산됩니다.');});
+$('manualDay').value=C.today();
 $('entryReset').onclick=resetEntry;
 $('entryForm').onsubmit=e=>{e.preventDefault();run(async()=>{
  $('entrySave').disabled=true;try{
