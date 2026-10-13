@@ -13,7 +13,7 @@ function render(){
  if(!data)return;const today=C.today(),r=C.calculate(data,$('from').value,$('to').value,today),m=C.calculate(data,today.slice(0,7)+'-01',today,today);
  const current=C.inventory(data,stock,today);
  $('remaining').textContent=money(current.goods)+' 개';$('hoseRemaining').textContent=money(current.hose)+' 개';
- $('hosePacking').textContent=current.hose_boxes==null?'1박스 = 25개 · 실사 수량 미입력':money(current.hose_boxes)+'박스 + '+money(current.hose_loose)+'개 · 1박스 = 25개';
+ $('hosePacking').textContent=current.hose<0?money(-current.hose)+'개 부족 · 호스 입고 필요':current.hose_boxes==null?'1박스 = 25개 · 실사 수량 미입력':money(current.hose_boxes)+'박스 + '+money(current.hose_loose)+'개 · 1박스 = 25개';
  $('stockUpdated').textContent=current.updated_at?'재고 실사 저장 '+new Date(current.updated_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'입출고 기록 기준 · 재고 실사 미입력';
  if(!stockDirty){$('stockGoods').value='';$('stockHose').value='';$('stockThroughDay').checked=!!stock.goods?.through_day;}
  $('stockGoods').placeholder=current.goods==null?'미입력':String(current.goods);$('stockHose').placeholder=current.hose==null?'미입력':String(current.hose);
