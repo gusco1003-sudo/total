@@ -2,6 +2,7 @@
 const $=id=>document.getElementById(id),A=NeulbomAuth,C=Neulbom,viewer=document.body.dataset.mode==='viewer';
 const money=n=>n==null?'—':Number(n).toLocaleString('ko-KR'),escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let data=null,settings={},stock={revision:0},stockDirty=false,editing=null,entryKey=crypto.randomUUID(),accountData={},loading=false,epoch=0;
+let manualBusy=false,manualRequestKey=crypto.randomUUID();
 let popup=null,channel='',pending=new Map(),connected=false;
 const sourceOrigin='https://bless-reshuffle-vest.ngrok-free.dev';
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
@@ -36,7 +37,7 @@ async function load(){
   const [raw,cfg,inventory]=await Promise.all([A.read('neulbom_data/source'),A.read('neulbom_data/settings'),A.read('neulbom_data/inventory')]);
   if(stamp!==epoch)return;settings=cfg||{};if(!stockDirty)stock=C.normalizeInventory(inventory);
   if(!raw){data=null;$('content').hidden=false;status('첫 정산 자료 연결이 필요합니다. 관리자 화면에서 주문수집 서버 연결 → 자동 정산 연결을 눌러 주세요.',true);return;}
-  data=C.normalize(raw);render();$('content').hidden=false;status(viewer?'늘봄 조회 전용 · 자료 수정 및 삭제는 관리자에게 요청해 주세요.':'늘봄 정산 자료를 불러왔습니다.');
+  data=C.normalize(raw);render();$('content').hidden=false;if(!manualBusy)status(viewer?'늘봄 조회 전용 · 자료 수정 및 삭제는 관리자에게 요청해 주세요.':'늘봄 정산 자료를 불러왔습니다.');
  }catch(e){if(stamp===epoch){clearData();status(e.message,true);}}
  finally{loading=false;}
 }
@@ -91,25 +92,38 @@ $('stockForm').onsubmit=e=>{e.preventDefault();run(async()=>{
  }finally{b.disabled=false;}
 });};
 let manualPreview=null;
-$('manualForm').addEventListener('input',()=>{manualPreview=null;$('manualCommit').disabled=true;$('manualResult').textContent='내용이 변경됐습니다. 출고 미리보기를 다시 확인하세요.';});
-$('manualForm').onsubmit=e=>{e.preventDefault();run(async()=>{
+async function manualRequest(path,body){
  if(viewer||!A.owner(A.auth.currentUser))throw Error('관리자 로그인이 필요합니다.');
- $('manualPreview').disabled=true;manualPreview=null;$('manualCommit').disabled=true;
+ const user=A.auth.currentUser;
+ let response;
+ for(let attempt=0;attempt<2;attempt++){
+  const token=await user.getIdToken(attempt===1);
+  response=await fetch(sourceOrigin+'/api/settlement/manual/'+path,{method:'POST',credentials:'omit',cache:'no-store',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','ngrok-skip-browser-warning':'1'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
+  if(response.status!==401||attempt===1)break;
+ }
+ const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'출고 반영에 실패했습니다.');return result;
+}
+async function showManualSource(raw){
+ const normalized=C.normalize(raw);
+ try{await A.write('neulbom_data/source',normalized);}catch{data=normalized;render();status('출고는 저장됐습니다. 화주 화면 자료는 자동 갱신됩니다.');return;}
+ data=normalized;render();
+}
+$('manualForm').addEventListener('input',()=>{if(manualBusy)return;manualRequestKey=crypto.randomUUID();$('manualResult').textContent='업로드한 송장 행 수만큼 재고 차감과 비용 정산을 반영합니다.';});
+$('manualForm').onsubmit=e=>{e.preventDefault();if(manualBusy)return;run(async()=>{
+ manualBusy=true;const stamp=epoch,controls=[...document.querySelectorAll('#manualForm input,#manualForm textarea,#manualForm button')];controls.forEach(x=>x.disabled=true);
  try{
-  const body={day:$('manualDay').value,party:$('manualParty').value,note:$('manualNote').value,tracking:$('manualTracking').value};
+  status('파일을 읽고 있습니다…');$('manualResult').textContent='파일을 읽고 있습니다…';
+  const body={day:$('manualDay').value,party:$('manualParty').value,note:$('manualNote').value,tracking:$('manualTracking').value,client_key:manualRequestKey};
   const file=$('manualFile').files[0];
   if(file){if(file.size>10*1024*1024)throw Error('파일은 10MB 이하로 선택하세요.');const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));body.file={name:file.name,content:btoa(binary)};}
-  const result=await bridge('manual-preview',body);manualPreview=result;
-  $('manualResult').textContent=result.day+' 출고 · 신규 '+money(result.boxes)+'박스 / 호스 '+money(result.hose_pieces)+'개 차감 / 택배비 '+money(result.total)+'원 (부가세 포함)\n이미 등록 '+money(result.already)+'개 · 파일 내 중복 '+money(result.duplicate_rows)+'개 제외\n유록스 실사값에 오늘 출고가 포함돼 있으면 유록스는 다시 차감하지 않습니다.';
-  $('manualCommit').disabled=!result.boxes;status('미리보기를 확인한 뒤 출고 반영을 누르세요.');
- }finally{$('manualPreview').disabled=false;}
+  status('출고 기록·재고·비용 정산을 반영하고 있습니다…');$('manualResult').textContent='재고 차감과 비용 정산을 반영하고 있습니다…';
+  const result=await manualRequest('upload',body);if(stamp!==epoch)return;
+  await showManualSource(result.source);$('manualForm').reset();$('manualDay').value=C.today();manualRequestKey=crypto.randomUUID();
+  $('manualResult').textContent=result.day+' 출고 '+money(result.boxes)+'박스 반영 완료 · 유록스 '+money(result.boxes)+'개 / 호스 '+money(result.boxes)+'개 차감 · 택배비 '+money(result.total)+'원 (부가세 포함)';status('출고 기록·재고·비용 정산을 반영했습니다.');
+ }catch(e){$('manualResult').textContent=e.name==='TimeoutError'?'서버 응답이 늦습니다. 다시 누르면 같은 요청의 저장 결과를 확인합니다.':e.message;throw e;}
+ finally{manualBusy=false;controls.forEach(x=>x.disabled=false);$('manualCommit').disabled=true;}
 });};
-$('manualCommit').onclick=()=>run(async()=>{
- if(!manualPreview)return;$('manualCommit').disabled=true;
- try{await bridge('manual-save',{token:manualPreview.token});manualPreview=null;await publishLatest();$('manualForm').reset();$('manualDay').value=C.today();$('manualResult').textContent='출고 기록·재고·택배비 반영 완료.';status('수동 택배 출고를 반영했습니다. 같은 송장은 한 번만 계산합니다.');}
- catch(e){$('manualCommit').disabled=false;throw e;}
-});
-$('manualEntries').onclick=e=>run(async()=>{const id=Number(e.target.closest('button')?.dataset.manual),entry=data?.manual_dispatches.find(x=>x.id===id);if(!entry)return;await bridge('manual-void',{revision:entry.revision,voided:!entry.voided},id);await publishLatest();status('수동 택배 출고 상태를 변경했습니다. 자동 출고에도 있는 송장은 계속 계산됩니다.');});
+$('manualEntries').onclick=e=>run(async()=>{const id=Number(e.target.closest('button')?.dataset.manual),entry=data?.manual_dispatches.find(x=>x.id===id);if(!entry)return;const result=await manualRequest(id+'/void',{revision:entry.revision,voided:!entry.voided});await showManualSource(result.source);status('수동 택배 출고 상태를 변경했습니다.');});
 $('manualDay').value=C.today();
 $('entryReset').onclick=resetEntry;
 $('entryForm').onsubmit=e=>{e.preventDefault();run(async()=>{
