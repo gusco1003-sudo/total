@@ -1,21 +1,27 @@
 'use strict';
 const $=id=>document.getElementById(id),A=NeulbomAuth,C=Neulbom,viewer=document.body.dataset.mode==='viewer';
 const money=n=>n==null?'—':Number(n).toLocaleString('ko-KR'),escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let data=null,settings={},editing=null,entryKey=crypto.randomUUID(),accountData={},loading=false,epoch=0;
+let data=null,settings={},stock={revision:0},stockDirty=false,editing=null,entryKey=crypto.randomUUID(),accountData={},loading=false,epoch=0;
 let popup=null,channel='',pending=new Map(),connected=false;
 const sourceOrigin='https://bless-reshuffle-vest.ngrok-free.dev';
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
-function clearData(){epoch++;data=null;settings={};accountData={};$('content').hidden=true;for(const id of ['daily','entries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','todayBoxes','todayTotal','monthTotal'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
+function clearData(){epoch++;data=null;settings={};stock={revision:0};stockDirty=false;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','entries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
 async function run(fn){try{await fn();}catch(e){status(e.message||'처리에 실패했습니다.',true);}}
 function amountCell(v){return '<td>'+money(v)+'</td>';}
 function resetEntry(){editing=null;entryKey=crypto.randomUUID();$('entryForm').reset();$('entryDay').value=C.today();$('entrySave').textContent='기록 추가';}
 function render(){
  if(!data)return;const today=C.today(),r=C.calculate(data,$('from').value,$('to').value,today),m=C.calculate(data,today.slice(0,7)+'-01',today,today);
- $('remaining').textContent=money(r.remaining)+' 개';$('todayBoxes').textContent=money(r.today_parcels)+' 박스';$('todayTotal').textContent=money(r.today_parcels*2640)+' 원';$('monthTotal').textContent=money(m.total)+' 원';
- $('palletEstimate').textContent=settings.boxesPerPallet&&r.remaining!=null?'약 '+money(Math.ceil(Math.max(0,r.remaining)/settings.boxesPerPallet))+' 파렛트 · '+money(settings.boxesPerPallet)+'개/PLT 환산':'파렛트 환산 기준 미설정';
+ const current=C.inventory(data,stock,today);
+ $('remaining').textContent=money(current.goods)+' 개';$('hoseRemaining').textContent=money(current.hose)+' 개';
+ $('hosePacking').textContent=current.hose_boxes==null?'1박스 = 25개 · 실사 수량 미입력':money(current.hose_boxes)+'박스 + '+money(current.hose_loose)+'개 · 1박스 = 25개';
+ $('stockUpdated').textContent=current.updated_at?'재고 실사 저장 '+new Date(current.updated_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'입출고 기록 기준 · 재고 실사 미입력';
+ if(!stockDirty){$('stockGoods').value='';$('stockHose').value='';}
+ $('stockGoods').placeholder=current.goods==null?'미입력':String(current.goods);$('stockHose').placeholder=current.hose==null?'미입력':String(current.hose);
+ $('todayBoxes').textContent=money(r.today_parcels)+' 박스';$('todayTotal').textContent=money(r.today_parcels*2640)+' 원';$('monthTotal').textContent=money(m.total)+' 원';
+ $('palletEstimate').textContent=settings.boxesPerPallet&&current.goods!=null?'약 '+money(Math.ceil(Math.max(0,current.goods)/settings.boxesPerPallet))+' 파렛트 · '+money(settings.boxesPerPallet)+'개/PLT 환산':'파렛트 환산 기준 미설정';
  $('syncTime').textContent='자료 갱신 '+new Date(data.updated_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
  const stale=Date.now()-Date.parse(data.updated_at)>15*60*1000;
- const warnings=[...r.warnings];if(stale)warnings.push('자동 동기화가 지연됐습니다. 마지막 갱신 시점의 자료입니다.');if(r.remaining<0)warnings.push('재고가 음수입니다. 입출고 기록을 확인해 주세요.');
+ const warnings=[...r.warnings];if(stale)warnings.push('자동 동기화가 지연됐습니다. 마지막 갱신 시점의 자료입니다.');if(current.goods<0||current.hose<0)warnings.push('재고가 음수입니다. 입출고 기록을 확인해 주세요.');
  $('warnings').textContent=warnings.join('\n');$('warnings').hidden=!warnings.length;
  $('daily').innerHTML=[...r.daily].reverse().map(b=>'<tr><td>'+b.date+'</td>'+[b.received,b.parcel_boxes,b.other_boxes,b.hose_boxes,b.remaining,b.supply,b.vat,b.total].map(amountCell).join('')+'</tr>').join('');
  $('sum').innerHTML='<tr><td>기간 합계</td>'+[r.received,r.parcel_boxes,r.other_boxes,r.hose_boxes,r.closing,r.subtotal,r.vat,r.total].map(amountCell).join('')+'</tr>';
@@ -26,8 +32,8 @@ function render(){
 async function load(){
  if(loading||!A.auth.currentUser)return;loading=true;const stamp=epoch;
  try{
-  const [raw,cfg]=await Promise.all([A.read('neulbom_data/source'),A.read('neulbom_data/settings')]);
-  if(stamp!==epoch)return;settings=cfg||{};
+  const [raw,cfg,inventory]=await Promise.all([A.read('neulbom_data/source'),A.read('neulbom_data/settings'),A.read('neulbom_data/inventory')]);
+  if(stamp!==epoch)return;settings=cfg||{};if(!stockDirty)stock=C.normalizeInventory(inventory);
   if(!raw){data=null;$('content').hidden=false;status('첫 정산 자료 연결이 필요합니다. 관리자 화면에서 주문수집 서버 연결 → 자동 정산 연결을 눌러 주세요.',true);return;}
   data=C.normalize(raw);render();$('content').hidden=false;status(viewer?'늘봄 조회 전용 · 자료 수정 및 삭제는 관리자에게 요청해 주세요.':'늘봄 정산 자료를 불러왔습니다.');
  }catch(e){if(stamp===epoch){clearData();status(e.message,true);}}
@@ -63,7 +69,26 @@ $('activateSync').onclick=()=>run(async()=>{
  const worker=await bridge('sync-prepare');await A.write('neulbomSync',{uid:worker.uid,enabled:true});
  await publishLatest();await bridge('sync-enable');status('자동 정산 연결 완료. 서버에서 1분마다 갱신하며, 서버가 꺼져 있어도 마지막 저장 자료를 조회할 수 있습니다.');
 });
-$('savePallet').onclick=()=>run(async()=>{const raw=$('palletSize').value,n=raw?Number(raw):null;if(n!==null&&(!Number.isInteger(n)||n<1||n>100000))throw Error('박스 수를 확인하세요.');await A.write('neulbom_data/settings',{boxesPerPallet:n});settings={boxesPerPallet:n};render();status('파렛트 환산 기준을 저장했습니다.');});
+$('savePallet').onclick=()=>run(async()=>{const raw=$('palletSize').value,n=raw?Number(raw):null;if(n!==null&&(!Number.isInteger(n)||n<1||n>100000))throw Error('박스 수를 확인하세요.');await A.write('neulbom_data/settings/boxesPerPallet',n);settings={...settings,boxesPerPallet:n};render();status('파렛트 환산 기준을 저장했습니다.');});
+$('stockForm').addEventListener('input',()=>{stockDirty=true;});
+$('stockReload').onclick=()=>run(async()=>{stockDirty=false;await load();status('최신 재고를 불러왔습니다.');});
+$('stockForm').onsubmit=e=>{e.preventDefault();run(async()=>{
+ if(viewer||!A.owner(A.auth.currentUser))throw Error('관리자만 재고를 변경할 수 있습니다.');
+ const values={goods:$('stockGoods').value,hose:$('stockHose').value};
+ if(!Object.values(values).some(v=>v!==''))throw Error('수정할 재고 수량을 입력하세요.');
+ for(const v of Object.values(values))if(v!==''&&(!Number.isSafeInteger(Number(v))||Number(v)<0||Number(v)>10000000))throw Error('재고는 0~10,000,000 사이 정수로 입력하세요.');
+ const b=$('stockSave'),stamp=epoch;b.disabled=true;
+ try{
+  const [latest,fresh]=await Promise.all([A.readVersion('neulbom_data/inventory'),A.read('neulbom_data/source')]);
+  if(stamp!==epoch)throw Error('로그인 상태가 변경됐습니다. 다시 로그인하세요.');
+  const previous=C.normalizeInventory(latest.value);
+  if(previous.revision!==stock.revision)throw Error('다른 화면에서 재고가 변경됐습니다. 최신 재고 불러오기를 누른 뒤 다시 입력하세요.');
+  const day=C.today(),net=C.stockNet(fresh,day),next={...previous,revision:previous.revision+1,updated_at:new Date().toISOString()};
+  for(const key of ['goods','hose'])if(values[key]!=='')next[key]={quantity:Number(values[key]),baseline:net[key],day};
+  await A.compareWrite('neulbom_data/inventory',next,latest.etag);
+  stockDirty=false;stock=next;await load();status('재고만 저장했습니다. 화주 조회 화면과 화주라운지에 반영되며 정산 금액은 그대로입니다.');
+ }finally{b.disabled=false;}
+});};
 $('entryReset').onclick=resetEntry;
 $('entryForm').onsubmit=e=>{e.preventDefault();run(async()=>{
  $('entrySave').disabled=true;try{

@@ -13,6 +13,13 @@ async function request(path,options={}){
 }
 async function read(path){return (await request(path)).json();}
 async function write(path,value){if(!owner(auth.currentUser))throw Error('관리자만 변경할 수 있습니다.');return (await request(path,{method:'PUT',body:JSON.stringify(value)})).json();}
+async function readVersion(path){const r=await request(path,{headers:{'X-Firebase-ETag':'true'}});return {value:await r.json(),etag:r.headers.get('ETag')};}
+async function compareWrite(path,value,etag){
+ if(!owner(auth.currentUser))throw Error('관리자만 변경할 수 있습니다.');
+ if(!etag)throw Error('최신 재고 자료를 다시 불러와 주세요.');
+ try{return await (await request(path,{method:'PUT',headers:{'If-Match':etag},body:JSON.stringify(value)})).json();}
+ catch(e){if(e.message.includes('(412)'))throw Error('다른 화면에서 재고가 변경됐습니다. 새로 조회한 뒤 다시 저장하세요.');throw e;}
+}
 async function loginOwner(username,password){const result=await auth.signInWithEmailAndPassword(email(username),password);if(!owner(result.user)){await auth.signOut();throw Error('TS3PL 관리자 아이디로 로그인해 주세요.');}}
 function email(username){if(!/^[a-z0-9][a-z0-9_-]{3,31}$/.test(username))throw Error('아이디는 영문 소문자·숫자·_·- 4~32자로 입력하세요.');return username+'@neulbom.ts3pl.invalid';}
 async function issue(username,password,label){
@@ -27,5 +34,5 @@ async function issue(username,password,label){
  }catch(e){if(user){try{await user.delete();}catch{throw Error('계정 승인에 실패했습니다. 조회 권한은 부여되지 않았습니다. Firebase 사용자 목록에서 발급 상태를 확인하세요.');}}throw e;}
  finally{await secondary.delete();}
 }
-window.NeulbomAuth={auth,ready,owner,request,read,write,loginOwner,issue,email};
+window.NeulbomAuth={auth,ready,owner,request,read,write,readVersion,compareWrite,loginOwner,issue,email};
 })();

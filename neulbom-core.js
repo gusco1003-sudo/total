@@ -30,5 +30,25 @@ function calculate(raw,from,to,asOf=today()){
  if(!Number.isSafeInteger(subtotal+vat))throw Error('정산 금액 범위를 초과했습니다.');
  return {daily,entries:d.entries.filter(e=>e.day>=from&&e.day<=to).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id),storage:0,inFee:0,outFee:subtotal,etc:0,subtotal,vat,total:subtotal+vat,parcel_boxes:sum('parcel_boxes'),received:sum('received'),other_boxes:sum('other_boxes'),pallets:sum('pallets'),hose_boxes:sum('hose_boxes'),remaining:balance(asOf),closing:balance(to),today_parcels:d.shipments[asOf]||0,updated_at:d.updated_at,warnings:d.warnings};
 }
-const api={RATE,today,date,normalize,calculate};if(typeof module==='object'&&module.exports)module.exports=api;else root.Neulbom=api;
+const HOSE_PACK=25;
+function stockNet(raw,until=today()){
+ const d=normalize(raw);let goods=0,hose=0;
+ for(const [day,n] of Object.entries(d.shipments))if(day<=until)goods-=n;
+ for(const e of d.entries)if(!e.voided&&e.day<=until){const sign=e.kind==='receipt'?1:-1;goods+=sign*e.goods_boxes;hose+=sign*e.hose_boxes*HOSE_PACK;}
+ return {goods,hose};
+}
+function normalizeInventory(raw){
+ if(raw==null)return {revision:0};
+ const d=structuredClone(raw);
+ if(!integer(d.revision)||d.revision<1||typeof d.updated_at!=='string'||isNaN(Date.parse(d.updated_at)))throw Error('재고 실사 자료를 확인하세요.');
+ for(const key of ['goods','hose'])if(d[key]&&(!integer(d[key].quantity)||!Number.isSafeInteger(d[key].baseline)||Math.abs(d[key].baseline)>1000000000||!date(d[key].day)))throw Error('재고 실사 수량을 확인하세요.');
+ return d;
+}
+function inventory(raw,snapshot,asOf=today()){
+ const s=normalizeInventory(snapshot),net=stockNet(raw,asOf),fallback=calculate(raw,asOf,asOf,asOf).remaining;
+ const value=key=>s[key]&&s[key].day<=asOf?s[key].quantity+net[key]-s[key].baseline:(key==='goods'?fallback:null);
+ const goods=value('goods'),hose=value('hose');
+ return {goods,hose,hose_pack:HOSE_PACK,hose_boxes:hose==null||hose<0?null:Math.floor(hose/HOSE_PACK),hose_loose:hose==null||hose<0?null:hose%HOSE_PACK,updated_at:s.updated_at||null};
+}
+const api={RATE,HOSE_PACK,today,date,normalize,calculate,stockNet,normalizeInventory,inventory};if(typeof module==='object'&&module.exports)module.exports=api;else root.Neulbom=api;
 })(typeof window==='object'?window:globalThis);
