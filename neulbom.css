@@ -5,3 +5,5 @@
 @media(min-width:1100px){.cards{grid-template-columns:repeat(5,minmax(0,1fr));}.card .value{font-size:27px}}
 
 textarea{font:inherit;border:1px solid #cad9d0;border-radius:9px;padding:10px;resize:vertical}.check-row{display:flex;align-items:center;gap:8px;margin:16px 0}.check-row input{min-width:18px}
+
+.europlus-panel{border-color:#bcd0e0}.europlus-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.europlus-cards .card{background:#f4f8fb;box-shadow:none}.europlus-panel .tag{background:#e9f1f8;color:#356282}@media(max-width:700px){.europlus-cards{grid-template-columns:1fr}.europlus-cards .card{margin-bottom:4px}}

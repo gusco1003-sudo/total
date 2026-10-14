@@ -6,13 +6,20 @@ let manualBusy=false,manualRequestKey=crypto.randomUUID();
 let popup=null,channel='',pending=new Map(),connected=false;
 const sourceOrigin='https://bless-reshuffle-vest.ngrok-free.dev';
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
-function clearData(){epoch++;data=null;settings={};stock={revision:0};stockDirty=false;manualPreview=null;$('manualForm').reset();$('manualDay').value=C.today();$('manualCommit').disabled=true;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','entries','manualEntries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
+function clearData(){epoch++;data=null;settings={};stock={revision:0};stockDirty=false;manualPreview=null;$('manualForm').reset();$('manualDay').value=C.today();$('manualCommit').disabled=true;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','europlusDaily','entries','manualEntries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal','europlusRemaining','europlusReceived','europlusOutbound','europlusPeriod'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
 async function run(fn){try{await fn();}catch(e){status(e.message||'처리에 실패했습니다.',true);}}
 function amountCell(v){return '<td>'+money(v)+'</td>';}
-function resetEntry(){editing=null;entryKey=crypto.randomUUID();$('entryForm').reset();$('entryDay').value=C.today();$('entrySave').textContent='기록 추가';}
+function updateEntryProduct(){const plus=$('entryProduct').value==='europlus';$('entryGoodsLabel').textContent=plus?'유로플러스 박스':'유록스 박스';$('entryHoseField').hidden=plus;$('entryHose').disabled=plus;if(plus)$('entryHose').value=0;$('entryProductHelp').textContent=plus?'유로플러스는 호스 포함 제품입니다. 이 기록은 유로플러스 재고에만 반영되며 유록스·별도 호스·택배비에는 영향을 주지 않습니다.':'유록스와 별도 호스 입출고를 기록합니다. 기존 유록스 택배 출고의 호스 자동 차감은 유지됩니다.';}
+function resetEntry(){editing=null;entryKey=crypto.randomUUID();$('entryForm').reset();$('entryDay').value=C.today();$('entrySave').textContent='기록 추가';updateEntryProduct();}
+function allStockEntries(){return [...data.entries.map(e=>({...e,product:'eurox'})),...data.europlus_entries.map(e=>({...e,product:'europlus'}))];}
 function render(){
  if(!data)return;const today=C.today(),r=C.calculate(data,$('from').value,$('to').value,today),m=C.calculate(data,today.slice(0,7)+'-01',today,today);
  const current=C.inventory(data,stock,today);
+ const ep=C.europlus(data,$('from').value,$('to').value,today);
+ $('europlusRemaining').textContent=ep.remaining==null?'미등록':money(ep.remaining)+' 박스';
+ $('europlusReceived').textContent=money(ep.received)+' 박스';$('europlusOutbound').textContent=money(ep.outbound)+' 박스';
+ $('europlusPeriod').textContent=$('from').value+' ~ '+$('to').value+' · 현재 재고는 오늘 기준';
+ $('europlusDaily').innerHTML=ep.daily.map(b=>'<tr><td>'+b.date+'</td>'+[b.received,b.outbound,b.remaining].map(amountCell).join('')+'</tr>').join('')||'<tr><td colspan="4">조회 기간에 유로플러스 입출고 기록이 없습니다.</td></tr>';
  $('remaining').textContent=money(current.goods)+' 개';$('hoseRemaining').textContent=money(current.hose)+' 개';
  $('hosePacking').textContent=current.hose<0?money(-current.hose)+'개 부족 · 호스 입고 필요':current.hose_boxes==null?'1박스 = 25개 · 실사 수량 미입력':money(current.hose_boxes)+'박스 + '+money(current.hose_loose)+'개 · 1박스 = 25개';
  $('stockUpdated').textContent=current.updated_at?'재고 실사 저장 '+new Date(current.updated_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'입출고 기록 기준 · 재고 실사 미입력';
@@ -23,11 +30,12 @@ function render(){
  $('syncTime').textContent='자료 갱신 '+new Date(data.updated_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
  const stale=Date.now()-Date.parse(data.updated_at)>15*60*1000;
  const warnings=[...r.warnings];if(stale)warnings.push('자동 동기화가 지연됐습니다. 마지막 갱신 시점의 자료입니다.');if(current.goods<0||current.hose<0)warnings.push('재고가 음수입니다. 입출고 기록을 확인해 주세요.');
+ if(ep.remaining<0)warnings.push('유로플러스 재고가 음수입니다. 유로플러스 입출고 기록을 확인하세요.');
  $('warnings').textContent=warnings.join('\n');$('warnings').hidden=!warnings.length;
  $('daily').innerHTML=[...r.daily].reverse().map(b=>'<tr><td>'+b.date+'</td>'+[b.received,b.parcel_boxes,b.other_boxes,b.hose_boxes*25+b.parcel_boxes,b.remaining,b.supply,b.vat,b.total].map(amountCell).join('')+'</tr>').join('');
  $('sum').innerHTML='<tr><td>기간 합계</td>'+[r.received,r.parcel_boxes,r.other_boxes,r.hose_boxes*25+r.parcel_boxes,r.closing,r.subtotal,r.vat,r.total].map(amountCell).join('')+'</tr>';
  $('period').textContent=$('from').value+' ~ '+$('to').value+' · 택배 '+money(r.parcel_boxes)+'건 · 합계 '+money(r.total)+'원';
- $('entries').innerHTML=r.entries.map(e=>'<tr class="'+(e.voided?'void':'')+'"><td>'+e.day+'</td><td>'+(e.kind==='receipt'?'입고':'별도 출고')+(e.voided?' (취소)':'')+'</td><td>'+escapeHTML(e.party)+'</td>'+[e.goods_boxes,e.pallets,e.hose_boxes].map(amountCell).join('')+'<td class="note">'+escapeHTML(e.note)+'</td>'+(!viewer?'<td><button data-edit="'+e.id+'">수정</button> <button data-void="'+e.id+'">'+(e.voided?'복원':'취소')+'</button></td>':'')+'</tr>').join('')||'<tr><td colspan="8">해당 기간의 기록이 없습니다.</td></tr>';
+ $('entries').innerHTML=allStockEntries().filter(e=>e.day>=$('from').value&&e.day<=$('to').value).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id).map(e=>'<tr class="'+(e.voided?'void':'')+'"><td>'+e.day+'</td><td>'+(e.kind==='receipt'?'입고':'별도 출고')+(e.voided?' (취소)':'')+'</td><td>'+escapeHTML(e.party)+'</td><td><strong>'+(e.product==='europlus'?'유로플러스':'유록스')+'</strong><br>'+money(e.goods_boxes)+'박스</td>'+amountCell(e.pallets)+'<td>'+(e.product==='europlus'?'제품에 포함':money(e.hose_boxes))+'</td><td class="note">'+escapeHTML(e.note)+'</td>'+(!viewer?'<td><button data-edit="'+e.id+'">수정</button> <button data-void="'+e.id+'">'+(e.voided?'복원':'취소')+'</button></td>':'')+'</tr>').join('')||'<tr><td colspan="8">해당 기간의 기록이 없습니다.</td></tr>';
  $('palletSize').value=settings.boxesPerPallet||'';
  $('manualEntries').innerHTML=data.manual_dispatches.filter(e=>e.day>=$('from').value&&e.day<=$('to').value).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id).map(e=>'<tr class="'+(e.voided?'void':'')+'"><td>'+e.day+'</td><td>'+escapeHTML(e.party||'수동 택배')+'</td><td>'+money(e.listed_boxes)+'</td><td>'+money(e.boxes)+'</td><td>'+money(e.boxes)+'</td><td>'+money(e.boxes*2640)+'</td><td>'+escapeHTML(e.note)+'</td>'+(!viewer?'<td><button data-manual="'+e.id+'">'+(e.voided?'복원':'취소')+'</button></td>':'')+'</tr>').join('')||'<tr><td colspan="8">수동 택배 출고 기록이 없습니다.</td></tr>';
 }
@@ -126,17 +134,19 @@ $('manualForm').onsubmit=e=>{e.preventDefault();if(manualBusy)return;run(async()
 $('manualEntries').onclick=e=>run(async()=>{const id=Number(e.target.closest('button')?.dataset.manual),entry=data?.manual_dispatches.find(x=>x.id===id);if(!entry)return;const result=await manualRequest(id+'/void',{revision:entry.revision,voided:!entry.voided});await showManualSource(result.source);status('수동 택배 출고 상태를 변경했습니다.');});
 $('manualDay').value=C.today();
 $('entryReset').onclick=resetEntry;
-$('entryForm').onsubmit=e=>{e.preventDefault();run(async()=>{
+$('entryProduct').onchange=updateEntryProduct;
+$('entryForm').onsubmit=e=>{e.preventDefault();if($('entrySave').disabled)return;run(async()=>{
+ if(viewer||!A.owner(A.auth.currentUser))throw Error('관리자만 입출고 기록을 변경할 수 있습니다.');
  $('entrySave').disabled=true;try{
- const body={day:$('entryDay').value,kind:$('entryKind').value,party:$('entryParty').value,goods_boxes:Number($('entryGoods').value),pallets:Number($('entryPallets').value),hose_boxes:Number($('entryHose').value),note:$('entryNote').value};
+ const body={day:$('entryDay').value,kind:$('entryKind').value,party:$('entryParty').value,goods_boxes:Number($('entryGoods').value),pallets:Number($('entryPallets').value),hose_boxes:Number($('entryHose').value),note:$('entryNote').value,product:$('entryProduct').value};
  if(editing)body.revision=editing.revision;else body.client_key=entryKey;
  await bridge(editing?'edit':'add',body,editing?.id);resetEntry();
  try{await publishLatest();status('기록 저장 및 정산 반영 완료.');}catch{status('기록은 주문수집 서버에 저장됐습니다. 정산 화면 동기화가 지연되어 자동 재시도합니다.',true);}
  }finally{$('entrySave').disabled=false;}
  });};
 $('entries').onclick=e=>run(async()=>{
- const b=e.target.closest('button');if(!b||!data)return;const id=Number(b.dataset.edit||b.dataset.void),entry=data.entries.find(x=>x.id===id);if(!entry)return;
- if(b.dataset.edit){editing=entry;$('entryDay').value=entry.day;$('entryKind').value=entry.kind;$('entryParty').value=entry.party;$('entryGoods').value=entry.goods_boxes;$('entryPallets').value=entry.pallets;$('entryHose').value=entry.hose_boxes;$('entryNote').value=entry.note;$('entrySave').textContent='기록 수정';$('entryForm').scrollIntoView({behavior:'smooth'});}
+ const b=e.target.closest('button');if(!b||!data)return;const id=Number(b.dataset.edit||b.dataset.void),entry=allStockEntries().find(x=>x.id===id);if(!entry)return;
+ if(b.dataset.edit){editing=entry;$('entryDay').value=entry.day;$('entryKind').value=entry.kind;$('entryParty').value=entry.party;$('entryGoods').value=entry.goods_boxes;$('entryPallets').value=entry.pallets;$('entryHose').value=entry.hose_boxes;$('entryNote').value=entry.note;$('entryProduct').value=entry.product;updateEntryProduct();$('entrySave').textContent='기록 수정';$('entryForm').scrollIntoView({behavior:'smooth'});}
  else{await bridge('void',{revision:entry.revision,voided:!entry.voided},id);await publishLatest();status('기록 상태가 변경됐습니다. 취소 기록은 복원할 수 있습니다.');}
 });
 $('accountForm').onsubmit=e=>{e.preventDefault();run(async()=>{const b=e.submitter;b.disabled=true;try{
