@@ -1,0 +1,25 @@
+body.ts-other main>.grid>*{min-width:0}
+#kpInventoryApp .tablewrap{max-height:460px}
+#kpInventoryApp .kp-inventory .tablewrap{max-height:none}
+#kpInventoryApp .kp-qty{font-size:22px;font-weight:800;color:#203a5f}
+#kpInventoryApp .kp-qty small{font-size:13px;font-weight:500}
+#kpInventoryApp .kp-inline{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0}
+#kpInventoryApp .kp-inline>div{min-width:150px}
+#kpInventoryApp .kp-inline p{margin:0;flex:1}
+#kpInventoryApp .kp-space{margin-top:12px}
+#kpInventoryApp .kp-wrap{white-space:normal;min-width:150px;overflow-wrap:anywhere}
+#kpInventoryApp .kp-details{margin:18px 0;border-top:1px solid #dce5e8;padding-top:12px}
+#kpInventoryApp summary{cursor:pointer;font-weight:700;color:#315780;margin-bottom:12px}
+#kpInventoryApp .kp-shipment-detail{margin-top:8px}#kpInventoryApp .kp-shipment-detail div{padding:8px 0;border-top:1px solid #dce5e8}
+#kpInventoryApp textarea{font:inherit;width:100%;padding:12px;border:1px solid #cddade;border-radius:10px;resize:vertical;color:#28344d;background:#fafbff;margin-bottom:10px}
+#kpInventoryApp .kp-check{display:flex;align-items:center;gap:9px;margin:14px 0;font-size:13px}
+#kpInventoryApp .kp-check input{width:18px;min-width:18px;height:18px;accent-color:#315780}
+#kpInventoryApp button:disabled{color:#526277;background:#edf1f5;cursor:not-allowed;filter:none}
+#kpInventoryApp button.primary:disabled{background:#edf1f5;color:#526277;border-color:#dce5e8}
+#kpInventoryApp #pickingDraftBody input{min-width:100px}
+#kpInventoryApp #pickingDraftBody input[data-field=tracking]{min-width:180px}
+#kpInventoryApp #pickingDraftBody select{min-width:125px}
+#kpInventoryApp #pickingResult{line-height:1.9;overflow-wrap:anywhere}
+#kpInventoryApp input::placeholder,#kpInventoryApp textarea::placeholder{color:#5e6c80;opacity:1}
+@media(max-width:600px){#kpInventoryApp .kp-qty{font-size:19px}#kpInventoryApp .panelhead{align-items:flex-start;flex-wrap:wrap}#kpInventoryApp .kp-inline{align-items:flex-start}#kpInventoryApp .kp-inline p{flex-basis:100%}#kpInventoryApp .kp-check{font-size:12px}}
+@media print{#kpInventoryApp{display:none!important}}

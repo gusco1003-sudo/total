@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>한국프로바이던스 | 정산관리</title>
+<title>한국프로바이던스 | 재고·정산관리</title>
 <style>
 :root{--navy:#162f3b;--teal:#087e83;--bg:#f3f6f7;--line:#dce5e8;--muted:#627780;--ink:#17303c}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 'Malgun Gothic',sans-serif}button,input,select{font:inherit}button{cursor:pointer;border:1px solid var(--line);background:white;color:var(--ink);border-radius:8px;padding:9px 14px;font-weight:700}button:hover{background:#eaf4f4}button.primary{background:var(--teal);color:white;border-color:var(--teal)}button.danger{color:#ae3434}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #66c7cf;outline-offset:2px}header{background:var(--navy);color:white;padding:24px max(24px,calc((100% - 1240px)/2));display:flex;align-items:center;justify-content:space-between;gap:20px}.brand{display:flex;gap:14px;align-items:center}.logo{border:1px solid #70959e;border-radius:12px;width:48px;height:48px;display:grid;place-items:center;font-size:19px;font-weight:bold;color:#82dfd6}h1{font-size:23px;margin:0}header p{margin:1px 0;color:#b6cbd3;font-size:12px}.pill{font-size:12px;padding:6px 12px;background:#284854;border-radius:20px;white-space:nowrap}main{max-width:1288px;margin:auto;padding:26px 24px 50px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:20px}.toolbar h2{font-size:22px;margin:0}.muted{color:var(--muted);font-size:12px}label{display:block;font-weight:700;font-size:12px;margin-bottom:5px}input,select{padding:9px 10px;border:1px solid #cddade;border-radius:7px;color:var(--ink);background:white;min-width:0;width:100%}.row{display:flex;align-items:end;gap:9px;flex-wrap:wrap}.row>div{flex:1;min-width:120px}.row>div.wide{flex:2}.period{padding:18px;background:white;border:1px solid var(--line);border-radius:12px;margin-bottom:18px}.period .row>div{flex:initial;min-width:155px}.cards{display:grid;grid-template-columns:1.25fr repeat(3,1fr);gap:14px;margin-bottom:22px}.card{background:white;border:1px solid var(--line);border-radius:12px;padding:21px}.card.total{background:var(--navy);color:white;border:none}.card .label{font-size:13px;color:var(--muted)}.card.total .label,.card.total .muted{color:#bbd1d8}.amount{font-size:29px;font-weight:800;letter-spacing:-1px;margin:8px 0 3px;font-variant-numeric:tabular-nums}.amount small{font-size:14px;font-weight:500;letter-spacing:0;margin-left:4px}.grid{display:grid;grid-template-columns:1fr 330px;gap:20px}.panel{background:white;border:1px solid var(--line);border-radius:12px;padding:22px;margin-bottom:20px}h3{font-size:16px;margin:0 0 16px}.panelhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:16px}.panelhead h3{margin:0}.tag{border-radius:5px;padding:3px 7px;background:#e6f4f2;color:#08706d;font-size:12px;white-space:nowrap}.notice{padding:11px 14px;background:#edf6f6;border-left:3px solid #42a8a7;border-radius:4px;color:#45636c;font-size:12px;margin-top:14px}.warn{background:#fff0dc;border-color:#d68a1a;color:#885614}.stock{font-size:35px;font-weight:800;line-height:1.3}.stock small{font-size:15px;color:var(--muted)}.breakdown{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #edf0f1}.breakdown:last-child{border:0}.tabbar{display:flex;gap:5px;border-bottom:1px solid var(--line);margin-bottom:16px}.tabbar button{border:none;border-radius:0;background:none;padding:10px 16px;color:var(--muted)}.tabbar button.active{color:var(--teal);border-bottom:3px solid var(--teal)}.tablewrap{overflow:auto;max-height:490px}table{border-collapse:collapse;width:100%;font-size:13px;text-align:left;white-space:nowrap}th{color:var(--muted);background:#f6f9fa;font-size:12px}th,td{padding:11px 10px;border-bottom:1px solid #e7eef0}td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}td.note{white-space:normal;min-width:100px;max-width:300px;overflow-wrap:anywhere}td button{padding:3px 8px;font-size:12px}.empty{text-align:center;padding:35px;color:var(--muted)}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{flex:1;white-space:nowrap}.foot{font-size:12px;color:var(--muted);padding:12px 0}#message{position:fixed;bottom:25px;left:50%;transform:translateX(-50%);max-width:90vw;background:var(--navy);color:white;padding:13px 22px;border-radius:9px;box-shadow:0 5px 20px #0003;z-index:10}#message:empty{display:none}[hidden]{display:none!important}#printSheet{display:none}#cancelEdit{padding:9px}.smallbutton{font-size:12px}footer{text-align:center;color:#83959c;font-size:11px;padding-top:10px}@media(max-width:1000px){.cards{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}aside{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}aside .panel{margin:0}}@media(max-width:600px){header{padding:18px}.pill{display:none}h1{font-size:18px}main{padding:20px 14px}.cards{gap:9px}.card{padding:15px}.amount{font-size:23px}.panel{padding:17px}aside{display:block}aside .panel{margin-bottom:16px}.period .row>div{min-width:130px;flex:1}.toolbar{align-items:start}.row>div{min-width:110px}}
 @media print{@page{size:A4;margin:16mm}body{background:white;color:black;font-size:11px}header,main,#message{display:none!important}#printSheet{display:block}#printSheet h1{font-size:25px;margin:10px 0}#printSheet table{font-size:11px;white-space:normal;margin-top:15px}#printSheet h3{margin-top:22px}#printSheet th,#printSheet td{padding:7px;border:1px solid #ccd3d6}#printSheet tr{break-inside:avoid}#printSheet thead{display:table-header-group}.printtotal{text-align:right;font-size:19px;font-weight:bold;margin:20px 0}}
@@ -30,6 +30,8 @@
  footer{color:#526277}
 }
 </style>
+<link rel="stylesheet" href="./korea-inventory.css?v=20261014.1">
+<script src="./korea-inventory-core.js?v=20261014.1"></script>
 <script defer src="https://gusco1003-sudo.github.io/total/ts-workspace-theme.js?v=20261007.1" data-client="korea"></script>
 </head>
 <body>
@@ -83,7 +85,7 @@ function toast(s){$('message').textContent=s;clearTimeout(toastTimer);toastTimer
 function warning(s){$('loadWarning').hidden=false;$('loadWarning').textContent=s;$('saveStatus').textContent='저장 상태 확인 필요'}
 const ENDPOINT='https://ts3pl-982ef-default-rtdb.firebaseio.com/koreaprovidence_data.json';
 let etag=null, busy=false, loading=false, ready=false, draftId=null, editBase=null, legacyCandidates=[], legacyUnreadable=false;
-const signature=d=>JSON.stringify({vat:d.vat,entries:d.entries.map(e=>({id:e.id,date:e.date,type:e.type,qty:e.qty,note:e.note})).sort((a,b)=>a.id.localeCompare(b.id))});
+const signature=d=>JSON.stringify({vat:d.vat,entries:d.entries.map(e=>({id:e.id,date:e.date,type:e.type,qty:e.qty,note:e.note})).sort((a,b)=>a.id.localeCompare(b.id)),inventory:KoreaInventory.stableSignature(d.inventory)});
 function setControls(){
  const locked=busy||loading||!ready||storageBlocked;
  for(const id of ['submitEntry','vat'])$(id).disabled=locked;
@@ -91,6 +93,7 @@ function setControls(){
  for(const b of document.querySelectorAll('#logsBody button'))b.disabled=locked;
  for(const id of ['date','type','qty','note','cancelEdit'])$(id).disabled=busy;
  $('exportBtn').disabled=!ready;$('printBtn').disabled=!ready;
+ window.KoreaInventoryUI?.controls();
 }
 async function requestCloud(options={}){
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
@@ -109,7 +112,7 @@ function validateCloud(d){
  // Firebase omits an empty array, so restore it before validating the document.
  if(d&&d.entries===undefined)d={...d,entries:[]};
  validateData(d);if(d.vat!=='exclusive')throw Error('부가세 별도 10% 자료만 사용할 수 있습니다.');
- return d;
+ return KoreaInventory.normalize(d);
 }
 function readLegacy(){
  legacyCandidates=[];legacyUnreadable=false;
@@ -148,7 +151,7 @@ function acceptRemote(value,tag){data=value;etag=tag;ready=true;storageBlocked=f
 }
 async function syncCloud(manual=false){
  if(busy||loading)return;
- if(!manual&&(editId||$('qty').value||$('note').value))return;
+ if(!manual&&(editId||$('qty').value||$('note').value||window.KoreaInventoryUI?.hasDraft()))return;
  loading=true;setControls();
  try{
   const snapshot=await readCloud();etag=snapshot.tag;
@@ -180,7 +183,7 @@ async function commit(next,initializing=false){
  }catch(e){storageBlocked=true;warning('저장 완료를 확인하지 못했습니다. '+e.message);toast(e.message);return false}
  finally{busy=false;setControls()}
 }
-async function startCloud(){readLegacy();showLegacy();await syncCloud(true)}
+async function startCloud(){readLegacy();showLegacy();await syncCloud(true);if(ready&&!storageBlocked&&!data.inventory){try{await commit(KoreaInventory.seed(data));}catch(e){warning('품목 재고 초기화 확인 필요: '+e.message);}}}
 
 function copy(){return JSON.parse(JSON.stringify(data))}
 function setMonth(month){if(!/^20\d\d-\d\d$|^2100-\d\d$/.test(month))return toast('정산월을 선택하세요.');const first=month+'-01';if(!validDate(first)||first>today())return toast('미래 월은 아직 정산할 수 없습니다.');const last=dayString(new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)));rangeStart=first;rangeEnd=last<today()?last:today();$('month').value=month;$('start').value=rangeStart;$('end').value=rangeEnd;render()}
@@ -195,7 +198,7 @@ function render(){
  if(!ready){for(const id of ['total','inFee','parcelFee','storageFee','stock'])$(id).textContent='—';
  for(const id of ['taxSummary','inHint','parcelHint','storageHint','stockHint'])$(id).textContent='서버 자료 확인 전';
  $('logsBody').innerHTML='<tr><td colspan="6">서버 자료를 확인하고 있습니다.</td></tr>';$('dailyBody').innerHTML='';}
- setControls();
+ window.KoreaInventoryUI?.render();setControls();
 }
 function updateTab(){$('logView').hidden=activeTab!=='log';$('dailyView').hidden=activeTab!=='daily';$('logTab').classList.toggle('active',activeTab==='log');$('dailyTab').classList.toggle('active',activeTab==='daily');$('tableCount').textContent=activeTab==='log'?periodEntries().length+'개 기록':result.daily.length+'일';$('tableHint').textContent=activeTab==='log'?'선택한 기간의 기록입니다. 수정·삭제하면 정산에 즉시 반영됩니다.':'전월 재고를 이월하여 일별 마감 수량으로 계산합니다.'}
 function updateType(){const t=$('type').value;$('qtyLabel').textContent=t==='PARCEL'?'택배 건수 (건)':t==='IN'?'입고 수량 (PLT)':'출고 수량 (PLT)';$('entryHint').textContent=t==='PARCEL'?'택배 1건당 2,900원. 택배 등록은 보관 파렛트를 자동 차감하지 않습니다. 파렛트가 비워진 경우 파렛트 출고도 별도로 등록하세요.':t==='OUT'?'파렛트 출고는 재고를 차감하고, 출고 당일부터 보관비를 줄입니다. 별도 파렛트 출고비는 부과하지 않습니다.':'입고 1PLT당 5,000원. 입고 당일부터 보관비 700원/PLT·일이 적용됩니다.'}
@@ -214,5 +217,7 @@ window.addEventListener('focus',()=>syncCloud());
 setInterval(()=>syncCloud(),10000);
 $('date').max=today();$('start').max=today();$('end').max=today();resetForm();setMonth(today().slice(0,7));startCloud();
 </script>
+<script src="./vendor/xlsx-0.20.3.full.min.js"></script>
+<script src="./korea-inventory-ui.js?v=20261014.1"></script>
 </body></html>
 
