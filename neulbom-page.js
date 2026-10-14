@@ -6,11 +6,12 @@ let manualBusy=false,manualRequestKey=crypto.randomUUID();
 let connectionBusy=false;
 const sourceOrigin='https://bless-reshuffle-vest.ngrok-free.dev';
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
-function clearData(){epoch++;$('connectionResult').textContent='';$('connectionResult').hidden=true;data=null;settings={};stock={revision:0};stockDirty=false;manualPreview=null;$('manualForm').reset();$('manualDay').value=C.today();$('manualCommit').disabled=true;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','europlusDaily','entries','manualEntries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal','europlusRemaining','europlusReceived','europlusOutbound','europlusPeriod'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
+function clearData(){epoch++;entryMessage('');$('connectionResult').textContent='';$('connectionResult').hidden=true;data=null;settings={};stock={revision:0};stockDirty=false;manualPreview=null;$('manualForm').reset();$('manualDay').value=C.today();$('manualCommit').disabled=true;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','europlusDaily','entries','manualEntries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal','europlusRemaining','europlusReceived','europlusOutbound','europlusPeriod'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
 async function run(fn){try{await fn();}catch(e){status(e.message||'처리에 실패했습니다.',true);}}
 function amountCell(v){return '<td>'+money(v)+'</td>';}
-function updateEntryProduct(){const plus=$('entryProduct').value==='europlus';$('entryGoodsLabel').textContent=plus?'유로플러스 박스':'유록스 박스';$('entryHoseField').hidden=plus;$('entryHose').disabled=plus;if(plus)$('entryHose').value=0;$('entryProductHelp').textContent=plus?'유로플러스는 호스 포함 제품입니다. 별도 입출고는 유로플러스 재고만 반영합니다. 택배 출고·택배비는 위 피킹리스트 업로드로 반영하세요.':'유록스와 별도 호스 입출고를 기록합니다. 기존 유록스 택배 출고의 호스 자동 차감은 유지됩니다.';}
-function resetEntry(){editing=null;entryKey=crypto.randomUUID();$('entryForm').reset();$('entryDay').value=C.today();$('entrySave').textContent='기록 추가';updateEntryProduct();}
+function entryMessage(message,error=false){$('entryResult').textContent=message;$('entryResult').classList.toggle('error',error);}
+function updateEntryProduct(){const plus=$('entryProduct').value==='europlus';$('entryGoodsLabel').textContent=plus?'유로플러스 박스':'유록스 박스';$('entryHoseField').hidden=plus;$('entryHose').disabled=plus;if(plus)$('entryHose').value=0;$('entryProductHelp').textContent=plus?'유로플러스는 호스 포함 제품입니다. 별도 입출고는 유로플러스 재고만 반영합니다. 택배 출고·택배비는 위 피킹리스트 업로드로 반영하세요.':'유록스와 호스 입고·출고를 기록합니다. 호스는 25개입 박스 수로 입력하세요. 99박스는 2,475개입니다. 유록스 택배 출고 시 호스 1개 자동 차감은 유지됩니다.';}
+function resetEntry(){editing=null;entryKey=crypto.randomUUID();$('entryForm').reset();$('entryDay').value=C.today();$('entrySave').textContent='기록 추가';entryMessage('');updateEntryProduct();}
 function allStockEntries(){return [...data.entries.map(e=>({...e,product:'eurox'})),...data.europlus_entries.map(e=>({...e,product:'europlus'}))];}
 function render(){
  if(!data)return;const today=C.today(),r=C.calculate(data,$('from').value,$('to').value,today),m=C.calculate(data,today.slice(0,7)+'-01',today,today);
@@ -152,15 +153,18 @@ $('entryProduct').onchange=updateEntryProduct;
 $('entryForm').onsubmit=e=>{e.preventDefault();if($('entrySave').disabled)return;run(async()=>{
  if(viewer||!A.owner(A.auth.currentUser))throw Error('관리자만 입출고 기록을 변경할 수 있습니다.');
  const stamp=epoch;$('entrySave').disabled=true;try{
+ entryMessage('입출고 기록을 저장하고 있습니다…');
  const body={day:$('entryDay').value,kind:$('entryKind').value,party:$('entryParty').value,goods_boxes:Number($('entryGoods').value),pallets:Number($('entryPallets').value),hose_boxes:Number($('entryHose').value),note:$('entryNote').value,product:$('entryProduct').value};
  if(editing)body.revision=editing.revision;else body.client_key=entryKey;
  const result=await manualRequest('entries'+(editing?'/'+editing.id:''),body,editing?'PUT':'POST');
- if(stamp!==epoch)return;resetEntry();const synced=await showManualSource(result.source);status(synced?'기록 저장 및 정산 반영 완료.':'기록은 저장됐습니다. 화주 화면 자료는 자동 갱신됩니다.');
- }finally{$('entrySave').disabled=false;}
+ if(stamp!==epoch)return;resetEntry();const synced=await showManualSource(result.source);
+ const message=body.day+' '+(body.party||'입출고')+' 기록 저장 완료 · '+(body.product==='europlus'?'유로플러스':'유록스')+' '+money(body.goods_boxes)+'박스'+(body.product==='europlus'?'':' · 호스 '+money(body.hose_boxes)+'박스 ('+money(body.hose_boxes*25)+'개)');
+ entryMessage(message+(synced?'':' · 화주 화면 자료는 자동 갱신됩니다.'));status(message);
+ }catch(e){if(stamp===epoch)entryMessage(e.message||'입출고 기록 저장에 실패했습니다.',true);throw e;}finally{$('entrySave').disabled=false;}
  });};
 $('entries').onclick=e=>run(async()=>{
  const b=e.target.closest('button');if(!b||!data)return;const id=Number(b.dataset.edit||b.dataset.void),entry=allStockEntries().find(x=>x.id===id);if(!entry)return;
- if(b.dataset.edit){editing=entry;$('entryDay').value=entry.day;$('entryKind').value=entry.kind;$('entryParty').value=entry.party;$('entryGoods').value=entry.goods_boxes;$('entryPallets').value=entry.pallets;$('entryHose').value=entry.hose_boxes;$('entryNote').value=entry.note;$('entryProduct').value=entry.product;updateEntryProduct();$('entrySave').textContent='기록 수정';$('entryForm').scrollIntoView({behavior:'smooth'});}
+ if(b.dataset.edit){editing=entry;$('entryDay').value=entry.day;$('entryKind').value=entry.kind;$('entryParty').value=entry.party;$('entryGoods').value=entry.goods_boxes;$('entryPallets').value=entry.pallets;$('entryHose').value=entry.hose_boxes;$('entryNote').value=entry.note;$('entryProduct').value=entry.product;updateEntryProduct();entryMessage(entry.day+' '+entry.party+' 기록 수정 중');$('entrySave').textContent='기록 수정';$('entryForm').scrollIntoView({behavior:'smooth'});}
  else{const stamp=epoch,result=await manualRequest('entries/'+id+'/void',{revision:entry.revision,voided:!entry.voided});if(stamp!==epoch)return;await showManualSource(result.source);status('기록 상태가 변경됐습니다. 취소 기록은 복원할 수 있습니다.');}
 });
 $('accountForm').onsubmit=e=>{e.preventDefault();run(async()=>{const b=e.submitter;b.disabled=true;try{
