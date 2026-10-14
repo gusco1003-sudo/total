@@ -100,21 +100,21 @@ $('stockForm').onsubmit=e=>{e.preventDefault();run(async()=>{
  }finally{b.disabled=false;}
 });};
 let manualPreview=null;
-async function manualRequest(path,body){
+async function manualRequest(path,body,method='POST'){
  if(viewer||!A.owner(A.auth.currentUser))throw Error('관리자 로그인이 필요합니다.');
  const user=A.auth.currentUser;
  let response;
  for(let attempt=0;attempt<2;attempt++){
   const token=await user.getIdToken(attempt===1);
-  response=await fetch(sourceOrigin+'/api/settlement/manual/'+path,{method:'POST',credentials:'omit',cache:'no-store',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','ngrok-skip-browser-warning':'1'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
+  response=await fetch(sourceOrigin+'/api/settlement/manual/'+path,{method,credentials:'omit',cache:'no-store',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','ngrok-skip-browser-warning':'1'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
   if(response.status!==401||attempt===1)break;
  }
- const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'출고 반영에 실패했습니다.');return result;
+ const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'기록 반영에 실패했습니다.');return result;
 }
 async function showManualSource(raw){
  const normalized=C.normalize(raw);
- try{await A.write('neulbom_data/source',normalized);}catch{data=normalized;render();status('출고는 저장됐습니다. 화주 화면 자료는 자동 갱신됩니다.');return;}
- data=normalized;render();
+ try{await A.write('neulbom_data/source',normalized);}catch{data=normalized;render();status('기록은 저장됐습니다. 화주 화면 자료는 자동 갱신됩니다.');return false;}
+ data=normalized;render();return true;
 }
 $('manualForm').addEventListener('input',()=>{if(manualBusy)return;manualRequestKey=crypto.randomUUID();$('manualResult').textContent='업로드한 송장 행 수만큼 재고 차감과 비용 정산을 반영합니다.';});
 $('manualForm').onsubmit=e=>{e.preventDefault();if(manualBusy)return;run(async()=>{
@@ -137,17 +137,17 @@ $('entryReset').onclick=resetEntry;
 $('entryProduct').onchange=updateEntryProduct;
 $('entryForm').onsubmit=e=>{e.preventDefault();if($('entrySave').disabled)return;run(async()=>{
  if(viewer||!A.owner(A.auth.currentUser))throw Error('관리자만 입출고 기록을 변경할 수 있습니다.');
- $('entrySave').disabled=true;try{
+ const stamp=epoch;$('entrySave').disabled=true;try{
  const body={day:$('entryDay').value,kind:$('entryKind').value,party:$('entryParty').value,goods_boxes:Number($('entryGoods').value),pallets:Number($('entryPallets').value),hose_boxes:Number($('entryHose').value),note:$('entryNote').value,product:$('entryProduct').value};
  if(editing)body.revision=editing.revision;else body.client_key=entryKey;
- await bridge(editing?'edit':'add',body,editing?.id);resetEntry();
- try{await publishLatest();status('기록 저장 및 정산 반영 완료.');}catch{status('기록은 주문수집 서버에 저장됐습니다. 정산 화면 동기화가 지연되어 자동 재시도합니다.',true);}
+ const result=await manualRequest('entries'+(editing?'/'+editing.id:''),body,editing?'PUT':'POST');
+ if(stamp!==epoch)return;resetEntry();const synced=await showManualSource(result.source);status(synced?'기록 저장 및 정산 반영 완료.':'기록은 저장됐습니다. 화주 화면 자료는 자동 갱신됩니다.');
  }finally{$('entrySave').disabled=false;}
  });};
 $('entries').onclick=e=>run(async()=>{
  const b=e.target.closest('button');if(!b||!data)return;const id=Number(b.dataset.edit||b.dataset.void),entry=allStockEntries().find(x=>x.id===id);if(!entry)return;
  if(b.dataset.edit){editing=entry;$('entryDay').value=entry.day;$('entryKind').value=entry.kind;$('entryParty').value=entry.party;$('entryGoods').value=entry.goods_boxes;$('entryPallets').value=entry.pallets;$('entryHose').value=entry.hose_boxes;$('entryNote').value=entry.note;$('entryProduct').value=entry.product;updateEntryProduct();$('entrySave').textContent='기록 수정';$('entryForm').scrollIntoView({behavior:'smooth'});}
- else{await bridge('void',{revision:entry.revision,voided:!entry.voided},id);await publishLatest();status('기록 상태가 변경됐습니다. 취소 기록은 복원할 수 있습니다.');}
+ else{const stamp=epoch,result=await manualRequest('entries/'+id+'/void',{revision:entry.revision,voided:!entry.voided});if(stamp!==epoch)return;await showManualSource(result.source);status('기록 상태가 변경됐습니다. 취소 기록은 복원할 수 있습니다.');}
 });
 $('accountForm').onsubmit=e=>{e.preventDefault();run(async()=>{const b=e.submitter;b.disabled=true;try{
  const username=$('accountName').value.trim();await A.issue(username,$('accountPassword').value,$('accountLabel').value);$('accountPassword').value='';

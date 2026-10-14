@@ -24,22 +24,22 @@ test('legacy missing entries and Firebase objects work; mixed IDs and hose deduc
  for(const change of [d=>d.europlus_entries[0].id=1,d=>d.europlus_entries[0].hose_boxes=1,d=>d.europlus_entries[0].goods_boxes=-1,d=>d.europlus_entries[0].day='2026-02-30']){const data=sample();change(data);assert.throws(()=>C.normalize(data));}
 });
 
-test('integrated form sends Europlus through existing bridge and supports edit, void, restore',async()=>{
+test('integrated form sends Europlus directly with administrator token and supports edit, void, restore',async()=>{
  const fs=require('node:fs'),vm=require('node:vm');const nodes=new Map(),messages=[];let data=sample();const listeners={};
  const el=id=>{if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',checked:false,hidden:false,disabled:false,files:[],dataset:{},classList:{toggle(){}},addEventListener(){},replaceChildren(){this.innerHTML='';},scrollIntoView(){},reset(){if(this===el('entryForm'))for(const [key,v]of Object.entries({entryProduct:'eurox',entryKind:'receipt',entryGoods:'0',entryPallets:'0',entryHose:'0',entryParty:'',entryNote:''}))el(key).value=v;}});return nodes.get(id);};
- const popup={closed:false,postMessage(m){messages.push(m);let result={};
-  if(m.op==='add'){data.europlus_entries.push({...m.body,id:5,revision:1,voided:0});result=data.europlus_entries.at(-1);}
-  if(m.op==='edit'){Object.assign(data.europlus_entries.find(e=>e.id===m.entryId),m.body,{revision:2});}
-  if(m.op==='void'){Object.assign(data.europlus_entries.find(e=>e.id===m.entryId),m.body,{revision:m.body.revision+1,voided:Number(m.body.voided)});}
-  if(m.op==='read')result=structuredClone(data);
-  queueMicrotask(()=>listeners.message({source:popup,origin:'https://bless-reshuffle-vest.ngrok-free.dev',data:{...m,type:'result',result}}));
- }};
+ const fetch=async(url,options)=>{
+  assert.equal(options.credentials,'omit');assert.equal(options.headers.Authorization,'Bearer test-owner-token');
+  const body=JSON.parse(options.body),path=new URL(url).pathname,op=path.endsWith('/void')?'void':options.method==='PUT'?'edit':'add';messages.push({op,body});
+  if(op==='add')data.europlus_entries.push({...body,id:5,revision:1,voided:0});
+  else if(op==='edit')Object.assign(data.europlus_entries.find(e=>e.id===5),body,{revision:2});
+  else Object.assign(data.europlus_entries.find(e=>e.id===5),body,{revision:body.revision+1,voided:Number(body.voided)});
+  return {ok:true,status:200,json:async()=>({source:structuredClone(data)})};
+ };
  const stockFixture={revision:1,updated_at:data.updated_at};
- const auth={currentUser:{uid:'owner'},onAuthStateChanged(){}},A={auth,owner:()=>true,read:async p=>p.endsWith('/source')?structuredClone(data):p.endsWith('/inventory')?structuredClone(stockFixture):null,write:async()=>{}};
- const context=vm.createContext({NeulbomAuth:A,Neulbom:{...C,today:()=> '2026-10-14'},crypto:require('node:crypto'),document:{body:{dataset:{mode:'admin'}},getElementById:el,querySelectorAll:()=>[]},window:{addEventListener:(type,fn)=>listeners[type]=fn,open:()=>popup},location:{origin:'https://gusco1003-sudo.github.io'},URL,URLSearchParams,Intl,Date,Number,Promise,Set,Map,AbortSignal,setTimeout,clearTimeout,setInterval(){},console});
+ const auth={currentUser:{uid:'owner',getIdToken:async()=> 'test-owner-token'},onAuthStateChanged(){}},A={auth,owner:()=>true,read:async p=>p.endsWith('/source')?structuredClone(data):p.endsWith('/inventory')?structuredClone(stockFixture):null,write:async()=>{}};
+ const context=vm.createContext({NeulbomAuth:A,Neulbom:{...C,today:()=> '2026-10-14'},crypto:require('node:crypto'),document:{body:{dataset:{mode:'admin'}},getElementById:el,querySelectorAll:()=>[]},window:{addEventListener:(type,fn)=>listeners[type]=fn,open:()=>{throw Error('Saving must not open a popup');}},location:{origin:'https://gusco1003-sudo.github.io'},URL,URLSearchParams,Intl,Date,Number,Promise,Set,Map,AbortSignal,fetch,setTimeout,clearTimeout,setInterval(){},console});
  vm.runInContext(fs.readFileSync('neulbom-page.js','utf8'),context);context.fixture=data;context.stockFixture=stockFixture;
  vm.runInContext('stock=stockFixture;data=C.normalize(fixture);render();',context);
- el('connect').onclick();vm.runInContext('connected=true;',context);
  el('entryProduct').value='europlus';el('entryHose').value='8';el('entryProduct').onchange();assert.equal(el('entryHose').value,0);assert.equal(el('entryHoseField').hidden,true);
  el('entryGoods').value='10';el('entryParty').value='시험 입고처';el('entryForm').onsubmit({preventDefault(){}});
  for(let i=0;i<5;i++)await new Promise(setImmediate);
