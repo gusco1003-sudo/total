@@ -25,7 +25,7 @@ function render(){
  $('stockUpdated').textContent=current.updated_at?'재고 실사 저장 '+new Date(current.updated_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'}):'입출고 기록 기준 · 재고 실사 미입력';
  if(!stockDirty){$('stockGoods').value='';$('stockHose').value='';$('stockThroughDay').checked=!!stock.goods?.through_day;}
  $('stockGoods').placeholder=current.goods==null?'미입력':String(current.goods);$('stockHose').placeholder=current.hose==null?'미입력':String(current.hose);
- $('todayBoxes').textContent=money(r.today_parcels)+' 박스';$('todayTotal').textContent=money(r.today_parcels*2640)+' 원';$('monthTotal').textContent=money(m.total)+' 원';
+ $('todayBoxes').textContent=money(r.today_parcels)+' 박스';$('todayTotal').textContent=money(C.calculate(data,today,today,today).total)+' 원';$('monthTotal').textContent=money(m.total)+' 원';
  $('palletEstimate').textContent=settings.boxesPerPallet&&current.goods!=null?'약 '+money(Math.ceil(Math.max(0,current.goods)/settings.boxesPerPallet))+' 파렛트 · '+money(settings.boxesPerPallet)+'개/PLT 환산':'파렛트 환산 기준 미설정';
  $('syncTime').textContent='자료 갱신 '+new Date(data.updated_at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});
  const stale=Date.now()-Date.parse(data.updated_at)>15*60*1000;
