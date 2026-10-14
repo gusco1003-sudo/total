@@ -10,6 +10,9 @@ function normalize(raw){
  d.shipments=d.shipments||{};d.entries=Array.isArray(d.entries)?d.entries:Object.values(d.entries||{});d.warnings=d.warnings||[];
  if(typeof d.shipments!=='object'||Array.isArray(d.shipments)||!Array.isArray(d.warnings))throw Error('정산 자료 형식을 확인하세요.');
  for(const [day,n] of Object.entries(d.shipments))if(!date(day)||!integer(n))throw Error('택배 출고 수량 또는 날짜를 확인하세요.');
+ d.europlus_shipments=d.europlus_shipments||{};
+ if(typeof d.europlus_shipments!=='object'||Array.isArray(d.europlus_shipments))throw Error('유로플러스 택배 자료를 확인하세요.');
+ for(const [day,n] of Object.entries(d.europlus_shipments))if(!date(day)||!integer(n)||n>(d.shipments[day]||0))throw Error('유로플러스 택배 수량을 확인하세요.');
  d.europlus_entries=Array.isArray(d.europlus_entries)?d.europlus_entries:Object.values(d.europlus_entries||{});
  const ids=new Set();for(const e of [...d.entries,...d.europlus_entries]){
   if(!e||!Number.isSafeInteger(e.id)||ids.has(e.id)||!date(e.day)||!['receipt','outbound'].includes(e.kind)||!['goods_boxes','pallets','hose_boxes'].every(k=>integer(e[k]))||![0,1,false,true].includes(e.voided))throw Error('입출고 기록 또는 중복 번호를 확인하세요.');
@@ -18,26 +21,27 @@ function normalize(raw){
  if(d.europlus_entries.some(e=>e.hose_boxes!==0))throw Error('유로플러스는 호스 포함 제품입니다. 별도 호스 차감 자료를 확인하세요.');
  d.manual_dispatches=Array.isArray(d.manual_dispatches)?d.manual_dispatches:Object.values(d.manual_dispatches||{});
  for(const e of d.manual_dispatches)if(!integer(e.id)||!date(e.day)||!integer(e.boxes)||!integer(e.listed_boxes)||!Number.isSafeInteger(e.revision)||![0,1].includes(e.voided))throw Error('수동 출고 기록을 확인하세요.');
+ for(const e of d.manual_dispatches){e.europlus_boxes=e.europlus_boxes??0;e.eurox_boxes=e.eurox_boxes??e.boxes-e.europlus_boxes;e.hose_pieces=e.hose_pieces??e.eurox_boxes;if(![e.europlus_boxes,e.eurox_boxes,e.hose_pieces].every(integer)||e.eurox_boxes+e.europlus_boxes!==e.boxes||e.hose_pieces!==e.eurox_boxes)throw Error('수동 출고 품목별 수량을 확인하세요.');}
  return d;
 }
 function calculate(raw,from,to,asOf=today()){
  const d=normalize(raw);if(!date(from)||!date(to)||!date(asOf)||from>to||Date.parse(to)-Date.parse(from)>365*86400000)throw Error('조회 기간은 최대 366일로 입력하세요.');
  const active=d.entries.filter(e=>!e.voided),days={};
- const bucket=k=>days[k]||(days[k]={date:k,received:0,parcel_boxes:0,other_boxes:0,pallets:0,hose_boxes:0});
- for(const [k,n] of Object.entries(d.shipments))bucket(k).parcel_boxes=n;
+ const bucket=k=>days[k]||(days[k]={date:k,received:0,parcel_boxes:0,eurox_parcel_boxes:0,europlus_parcel_boxes:0,other_boxes:0,pallets:0,hose_boxes:0});
+ for(const [k,n] of Object.entries(d.shipments)){const b=bucket(k);b.parcel_boxes=n;b.europlus_parcel_boxes=d.europlus_shipments[k]||0;b.eurox_parcel_boxes=n-b.europlus_parcel_boxes;}
  for(const e of active){const b=bucket(e.day);if(e.kind==='receipt')b.received+=e.goods_boxes;else{b.other_boxes+=e.goods_boxes;b.pallets+=e.pallets;b.hose_boxes+=e.hose_boxes;}}
- function balance(until){let received=0,parcel=0,other=0;for(const [k,b]of Object.entries(days))if(k<=until){received+=b.received;parcel+=b.parcel_boxes;other+=b.other_boxes;}
+ function balance(until){let received=0,parcel=0,other=0;for(const [k,b]of Object.entries(days))if(k<=until){received+=b.received;parcel+=b.eurox_parcel_boxes;other+=b.other_boxes;}
   return active.some(e=>e.kind==='receipt'&&e.day<=until)?received-parcel-other:null;
  }
  const daily=[];for(let k=from;k<=to;k=step(k)){const b={...bucket(k)};b.remaining=balance(k);b.supply=b.parcel_boxes*RATE;b.vat=Math.round(b.supply/10);b.total=b.supply+b.vat;daily.push(b);}
  const sum=k=>daily.reduce((n,b)=>n+b[k],0),subtotal=sum('supply'),vat=Math.round(subtotal/10);
  if(!Number.isSafeInteger(subtotal+vat))throw Error('정산 금액 범위를 초과했습니다.');
- return {daily,entries:d.entries.filter(e=>e.day>=from&&e.day<=to).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id),storage:0,inFee:0,outFee:subtotal,etc:0,subtotal,vat,total:subtotal+vat,parcel_boxes:sum('parcel_boxes'),received:sum('received'),other_boxes:sum('other_boxes'),pallets:sum('pallets'),hose_boxes:sum('hose_boxes'),remaining:balance(asOf),closing:balance(to),today_parcels:d.shipments[asOf]||0,updated_at:d.updated_at,warnings:d.warnings};
+ return {daily,entries:d.entries.filter(e=>e.day>=from&&e.day<=to).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id),storage:0,inFee:0,outFee:subtotal,etc:0,subtotal,vat,total:subtotal+vat,parcel_boxes:sum('parcel_boxes'),eurox_parcel_boxes:sum('eurox_parcel_boxes'),europlus_parcel_boxes:sum('europlus_parcel_boxes'),received:sum('received'),other_boxes:sum('other_boxes'),pallets:sum('pallets'),hose_boxes:sum('hose_boxes'),remaining:balance(asOf),closing:balance(to),today_parcels:d.shipments[asOf]||0,updated_at:d.updated_at,warnings:d.warnings};
 }
 const HOSE_PACK=25;
 function stockNet(raw,until=today()){
  const d=normalize(raw);let goods=0,hose=0;
- for(const [day,n] of Object.entries(d.shipments))if(day<=until){goods-=n;hose-=n;}
+ for(const [day,n] of Object.entries(d.shipments))if(day<=until){const eurox=n-(d.europlus_shipments[day]||0);goods-=eurox;hose-=eurox;}
  for(const e of d.entries)if(!e.voided&&e.day<=until){const sign=e.kind==='receipt'?1:-1;goods+=sign*e.goods_boxes;hose+=sign*e.hose_boxes*HOSE_PACK;}
  return {goods,hose};
 }
@@ -59,6 +63,7 @@ function europlus(raw,from,to,asOf=today()){
  const active=d.europlus_entries.filter(e=>!e.voided),days={};
  const bucket=day=>days[day]||(days[day]={date:day,received:0,outbound:0,pallets:0});
  for(const e of active){const b=bucket(e.day);b[e.kind==='receipt'?'received':'outbound']+=e.goods_boxes;if(e.kind==='outbound')b.pallets+=e.pallets;}
+ for(const [day,n] of Object.entries(d.europlus_shipments))bucket(day).outbound+=n;
  function balance(until){return active.some(e=>e.kind==='receipt'&&e.day<=until)?Object.values(days).filter(d=>d.date<=until).reduce((n,d)=>n+d.received-d.outbound,0):null;}
  const daily=Object.values(days).filter(d=>d.date>=from&&d.date<=to).sort((a,b)=>b.date.localeCompare(a.date)).map(d=>({...d,remaining:balance(d.date)}));
  return {remaining:balance(asOf),closing:balance(to),daily,received:daily.reduce((n,d)=>n+d.received,0),outbound:daily.reduce((n,d)=>n+d.outbound,0),
