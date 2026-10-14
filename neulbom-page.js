@@ -3,10 +3,10 @@ const $=id=>document.getElementById(id),A=NeulbomAuth,C=Neulbom,viewer=document.
 const money=n=>n==null?'—':Number(n).toLocaleString('ko-KR'),escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let data=null,settings={},stock={revision:0},stockDirty=false,editing=null,entryKey=crypto.randomUUID(),accountData={},loading=false,epoch=0;
 let manualBusy=false,manualRequestKey=crypto.randomUUID();
-let popup=null,channel='',pending=new Map(),connected=false;
+let connectionBusy=false;
 const sourceOrigin='https://bless-reshuffle-vest.ngrok-free.dev';
 function status(message,error=false){$('status').textContent=message;$('status').classList.toggle('error',error);}
-function clearData(){epoch++;data=null;settings={};stock={revision:0};stockDirty=false;manualPreview=null;$('manualForm').reset();$('manualDay').value=C.today();$('manualCommit').disabled=true;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','europlusDaily','entries','manualEntries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal','europlusRemaining','europlusReceived','europlusOutbound','europlusPeriod'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
+function clearData(){epoch++;$('connectionResult').textContent='';$('connectionResult').hidden=true;data=null;settings={};stock={revision:0};stockDirty=false;manualPreview=null;$('manualForm').reset();$('manualDay').value=C.today();$('manualCommit').disabled=true;$('stockForm').reset();accountData={};$('content').hidden=true;for(const id of ['daily','europlusDaily','entries','manualEntries','sum','accounts'])$(id).replaceChildren();for(const id of ['remaining','hoseRemaining','todayBoxes','todayTotal','monthTotal','europlusRemaining','europlusReceived','europlusOutbound','europlusPeriod'])$(id).textContent='—';$('accountResult').textContent='';$('accountPassword').value='';$('accountResult').hidden=true;}
 async function run(fn){try{await fn();}catch(e){status(e.message||'처리에 실패했습니다.',true);}}
 function amountCell(v){return '<td>'+money(v)+'</td>';}
 function updateEntryProduct(){const plus=$('entryProduct').value==='europlus';$('entryGoodsLabel').textContent=plus?'유로플러스 박스':'유록스 박스';$('entryHoseField').hidden=plus;$('entryHose').disabled=plus;if(plus)$('entryHose').value=0;$('entryProductHelp').textContent=plus?'유로플러스는 호스 포함 제품입니다. 별도 입출고는 유로플러스 재고만 반영합니다. 택배 출고·택배비는 위 피킹리스트 업로드로 반영하세요.':'유록스와 별도 호스 입출고를 기록합니다. 기존 유록스 택배 출고의 호스 자동 차감은 유지됩니다.';}
@@ -53,17 +53,34 @@ async function loadAccounts(){
  if(viewer||!A.owner(A.auth.currentUser))return;const stamp=epoch,raw=await A.read('neulbomAccess');if(stamp!==epoch)return;accountData=raw||{};
  $('accounts').innerHTML=Object.entries(accountData).map(([uid,a])=>'<tr><td>'+escapeHTML(a.username)+'</td><td>'+escapeHTML(a.label)+'</td><td>'+(a.active?'사용 중':'중지')+'</td><td><button data-account="'+escapeHTML(uid)+'">'+(a.active?'사용 중지':'사용 허용')+'</button></td></tr>').join('')||'<tr><td colspan="4">발급된 계정이 없습니다.</td></tr>';
 }
-function bridge(op,body,entryId){return new Promise((resolve,reject)=>{
- if(!connected||!popup||popup.closed)return reject(Error('먼저 주문수집 서버 연결 버튼을 눌러 주세요.'));
- const id=crypto.randomUUID(),timer=setTimeout(()=>{pending.delete(id);reject(Error('서버 응답이 늦습니다. 목록을 새로고침한 뒤 저장 여부를 확인하세요.'));},45000);
- pending.set(id,{resolve,reject,timer});popup.postMessage({protocol:'ts3pl-neulbom-v1',channel,id,op,body,entryId},sourceOrigin);
- });}
-window.addEventListener('message',event=>{
- const m=event.data;if(event.source!==popup||event.origin!==sourceOrigin||!m||m.protocol!=='ts3pl-neulbom-v1'||m.channel!==channel)return;
- if(m.type==='ready'){connected=true;status('주문수집 서버 연결 완료. 입출고 기록과 자동 정산 연결을 사용할 수 있습니다.');return;}
- const p=pending.get(m.id);if(m.type!=='result'||!p)return;clearTimeout(p.timer);pending.delete(m.id);m.error?p.reject(Error(m.error)):p.resolve(m.result);
-});
-async function publishLatest(){const raw=C.normalize(await bridge('read'));await A.write('neulbom_data/source',raw);await load();}
+function connectionMessage(text,error=false){
+ const el=$('connectionResult');el.hidden=false;el.textContent=text;el.classList.toggle('error',error);
+}
+async function checkServerConnection(enable=false){
+ if(connectionBusy)return;connectionBusy=true;const stamp=epoch;
+ $('connect').disabled=true;$('activateSync').disabled=true;
+ connectionMessage(enable?'자동 정산 연결을 확인하고 있습니다…':'주문수집 서버에 연결하고 있습니다…');
+ try{
+  if(viewer||!A.owner(A.auth.currentUser))throw Error('관리자 로그인이 필요합니다.');
+  if(enable){
+   const worker=await manualRequest('cloud/prepare',{});
+   if(stamp!==epoch)throw Error('로그인 상태가 변경됐습니다. 다시 로그인하세요.');
+   if(!/^[A-Za-z0-9_-]{1,128}$/.test(worker.uid||''))throw Error('자동 정산 계정을 확인하지 못했습니다.');
+   await A.write('neulbomSync',{uid:worker.uid,enabled:true});
+   await manualRequest('cloud/enable',{});
+  }
+  const result=await manualRequest('connection',undefined,'GET');
+  if(stamp!==epoch)return;
+  if(result.app!=='neulbom-wms')throw Error('주문수집 서버 응답을 확인할 수 없습니다.');
+  const cloud=result.cloud||{};
+  let message='서버 연결 정상 · 이 화면에서 입출고 기록을 바로 저장할 수 있습니다.';
+  if(cloud.enabled){message+='\n자동 정산 '+(cloud.error?'재시도 중: '+cloud.error:'연결됨');if(cloud.last_success)message+=' · 마지막 동기화 '+new Date(cloud.last_success).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'});}
+  else message+='\n자동 정산은 아직 연결되지 않았습니다. 아래 자동 정산 연결을 눌러 주세요.';
+  if(enable)await load();
+  if(stamp===epoch){connectionMessage(message,!!cloud.error);status(message,!!cloud.error);}
+ }catch(e){if(stamp===epoch){const msg=e.name==='TimeoutError'?'서버 응답이 늦습니다. 서버 PC와 인터넷 연결을 확인한 뒤 다시 눌러 주세요.':e instanceof TypeError?'주문수집 서버에 연결하지 못했습니다. 서버 PC가 켜져 있는지 확인하세요.':e.message;connectionMessage(msg,true);status(msg,true);}}
+ finally{connectionBusy=false;$('connect').disabled=false;$('activateSync').disabled=false;}
+}
 document.querySelectorAll('.admin-only').forEach(el=>el.hidden=viewer);
 $('viewerLogin').hidden=false;
 if(viewer){$('loginTitle').textContent='늘봄 조회 로그인';$('loginHelp').textContent='TS3PL에서 발급받은 아이디와 비밀번호를 입력하세요.';}
@@ -73,12 +90,8 @@ $('viewerLogin').onsubmit=e=>{e.preventDefault();const button=e.submitter;if(but
 $('logout').onclick=()=>run(async()=>{clearData();await A.auth.signOut();});
 $('query').onclick=()=>run(async()=>{render();await load();});$('print').onclick=()=>window.print();
 $('thisMonth').onclick=()=>run(async()=>{$('from').value=C.today().slice(0,7)+'-01';$('to').value=C.today();render();});
-$('connect').onclick=()=>{connected=false;channel=crypto.randomUUID();popup=window.open(sourceOrigin+'/static/settlement-bridge.html?target='+encodeURIComponent(location.origin)+'&channel='+channel,'neulbom-source','width=540,height=650');if(!popup)status('팝업 차단을 해제하고 다시 연결해 주세요.',true);};
-$('activateSync').onclick=()=>run(async()=>{
- if(!A.owner(A.auth.currentUser))throw Error('관리자 로그인이 필요합니다.');
- const worker=await bridge('sync-prepare');await A.write('neulbomSync',{uid:worker.uid,enabled:true});
- await publishLatest();await bridge('sync-enable');status('자동 정산 연결 완료. 서버에서 1분마다 갱신하며, 서버가 꺼져 있어도 마지막 저장 자료를 조회할 수 있습니다.');
-});
+$('connect').onclick=()=>checkServerConnection();
+$('activateSync').onclick=()=>checkServerConnection(true);
 $('savePallet').onclick=()=>run(async()=>{const raw=$('palletSize').value,n=raw?Number(raw):null;if(n!==null&&(!Number.isInteger(n)||n<1||n>100000))throw Error('박스 수를 확인하세요.');await A.write('neulbom_data/settings/boxesPerPallet',n);settings={...settings,boxesPerPallet:n};render();status('파렛트 환산 기준을 저장했습니다.');});
 $('stockForm').addEventListener('input',()=>{stockDirty=true;});
 $('stockReload').onclick=()=>run(async()=>{stockDirty=false;await load();status('최신 재고를 불러왔습니다.');});
@@ -106,9 +119,10 @@ async function manualRequest(path,body,method='POST'){
  let response;
  for(let attempt=0;attempt<2;attempt++){
   const token=await user.getIdToken(attempt===1);
-  response=await fetch(sourceOrigin+'/api/settlement/manual/'+path,{method,credentials:'omit',cache:'no-store',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','ngrok-skip-browser-warning':'1'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
+  response=await fetch(sourceOrigin+'/api/settlement/manual/'+path,{method,credentials:'omit',cache:'no-store',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json','ngrok-skip-browser-warning':'1'},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(path.startsWith('cloud/')?60000:20000)});
   if(response.status!==401||attempt===1)break;
  }
+ if(A.auth.currentUser?.uid!==user.uid)throw Error('로그인 상태가 변경됐습니다. 다시 로그인하세요.');
  const result=await response.json();if(!response.ok)throw Error(typeof result.detail==='string'?result.detail:'기록 반영에 실패했습니다.');return result;
 }
 async function showManualSource(raw){
