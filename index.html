@@ -888,6 +888,7 @@ function calculate(d,start,end){
             </div>
           </div>`;
         const delay = `style="animation-delay:${(i + 1) * 0.08}s"`;
+        if(c.key==='jinjubulgyosa')return `<div class="animate-fadeup" ${delay}><a href="${esc(c.link)}" target="_blank" rel="noopener" class="group block">${inner}</a><button type="button" data-jinju-inventory class="mt-3 w-full rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200">제품별 재고 · 품목 관리</button></div>`;
         return c.link
           ? `<a href="${esc(c.link)}" target="_blank" rel="noopener" class="group block animate-fadeup" ${delay}>${inner}</a>`
           : `<div class="animate-fadeup" ${delay}>${inner}</div>`;
@@ -1271,5 +1272,5 @@ function calculate(d,start,end){
       }, 10000);
     });
   </script>
-<script src="./statement-pdf.js?v=20261006-batch1"></script><script src="./batch-statements.js?v=20261006-batch1"></script></body>
+<script src="./statement-pdf.js?v=20261006-batch1"></script><script src="./batch-statements.js?v=20261006-batch1"></script><script src="./jinju-stock-core.js?v=20261015.1"></script><script src="./jinju-inventory-view.js?v=20261015.1"></script></body>
 </html>
