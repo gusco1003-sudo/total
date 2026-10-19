@@ -1,10 +1,10 @@
 /* Product inventory extends the existing settlement document without changing its opening ledger. */
-(function(root,factory){const api=factory();if(typeof module==='object'&&module.exports)module.exports=api;else root.KoreaInventory=api;})(typeof globalThis!=='undefined'?globalThis:this,function(){
+(function(root,factory){const api=factory(typeof module==='object'&&module.exports?require('./korea-product-names.js'):root.KoreaProductNames);if(typeof module==='object'&&module.exports)module.exports=api;else root.KoreaInventory=api;})(typeof globalThis!=='undefined'?globalThis:this,function(labels){
  'use strict';
  const catalog=[
-  {id:'classic',name:'클래식',unit:'개',standard:120,aliases:['클래식','클래식제품','classic']},
-  {id:'attract',name:'어트랙',unit:'개',standard:120,aliases:['어트랙','어트렉','attract','attrack']},
-  {id:'ultra',name:'울트라',unit:'개',standard:120,aliases:['울트라','ultra']},
+  {id:'classic',name:labels.names.classic,unit:'개',standard:120,aliases:['클래식','클래식제품','classic']},
+  {id:'attract',name:labels.names.attract,unit:'개',standard:120,aliases:['어트랙','어트렉','attract','attrack']},
+  {id:'ultra',name:labels.names.ultra,unit:'개',standard:120,aliases:['울트라','ultra']},
   {id:'box3',name:'3호 상자',unit:'매',standard:480,aliases:['3호상자','상자3호','3호박스','박스3호','3호','box3']}
  ];
  const product=id=>catalog.find(p=>p.id===id);

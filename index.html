@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+<script src="./korea-product-names.js?v=20261019.1"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>TS3PL · 통합 매출 대시보드</title>
@@ -1119,7 +1120,7 @@ function calculate(d,start,end){
           body += toArray(data.entries).filter(e => e.date >= range.from && e.date <= range.to)
             .sort((a,b) => a.date.localeCompare(b.date)).map(e => td([e.date,
               esc(({IN:'입고',OUT:'파렛트 출고',PARCEL:'택배'})[e.type]) + ' · ' + comma(e.qty) +
-              (e.type === 'PARCEL' ? '건' : ' PLT') + ' · ' + esc(e.note),
+              (e.type === 'PARCEL' ? '건' : ' PLT') + ' · ' + esc(KoreaProductNames.format(e.note)),
               comma(e.type === 'IN' ? e.qty * 5000 : e.type === 'PARCEL' ? e.qty * 2900 : 0)])).join('');
         }
         if (!body) body = '<tr><td colspan="3">해당 월 자료가 없습니다.</td></tr>';

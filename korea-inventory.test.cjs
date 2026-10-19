@@ -42,6 +42,12 @@ test('Firebase omitted empty arrays normalize without losing planned receipts',(
  const d=seeded();delete d.inventory.shipments;delete d.inventory.releases;const normalized=K.normalize(d);assert.deepEqual(normalized.inventory.shipments,[]);assert.equal(normalized.inventory.plans.length,4);const reversed=Object.fromEntries(Object.entries(normalized.inventory).reverse());assert.equal(K.stableSignature(normalized.inventory),K.stableSignature(reversed));
 });
 test('tab and quoted CSV inputs preserve shipment keys; ambiguous products need a selection',()=>{
+ const labels=require('./korea-product-names.js');
+ const renamed=K.parsePickingRows(K.parseDelimited('운송장번호,품목,수량\n001,DE)클래식8kg,1\n002,DE)울트라8kg,1\n003,DE)어트랙8kg,1'));
+ assert.deepEqual(renamed.map(r=>r.product),['classic','ultra','attract']);
+ assert.equal(labels.format('클래식 836개 · 울트라 120개 · 어트랙 120개'),'DE)클래식8kg 836개 · DE)울트라8kg 120개 · DE)어트랙8kg 120개');
+ assert.equal(labels.format('DE)울트라8kg'),'DE)울트라8kg');
+ assert.equal(K.previewShipment(arrived(),renamed,'2026-10-15','2026-10-15').parcelCount,3);
  const tab=K.parsePickingRows(K.parseDelimited('제목\n운송장번호\t상품명\t수량\n000123\t울트라\t2'));assert.equal(tab[0].tracking,'000123');assert.equal(tab[0].product,'ultra');const csv=K.parsePickingRows(K.parseDelimited('운송장번호,품목,수량\r\n000123,"클래식, 제품",2\r\n'));assert.equal(csv[0].product,'classic');assert.equal(K.matchProduct('클래식+울트라'), '');assert.throws(()=>K.previewShipment(arrived(),[row('1','',1)],'2026-10-15','2026-10-15'),/품목/);
 });
 test('wide picking list and workbook reading preserve per-product quantities',()=>{
