@@ -6,13 +6,37 @@ window.mountNeulbomReturns=function(host,request,changed=async()=>{}){
  host.classList.add('returns-panel');
  host.innerHTML=`<details><summary>반품 관리 <span>접수 · 입고 확인 · 양품 / 불량</span></summary><div class="returns-body"><p>반품송장을 한 번 등록하면 주문·입출고, 통합정산, 화주라운지에서 함께 확인합니다. 접수만으로 재고는 늘어나지 않습니다.</p><p><strong>관리자가 반품완료하면</strong> 양품·불량 재고를 각각 반영합니다. 유록스는 박스당 호스 1개 복귀 · 유로플러스는 별도 호스 변동 없음. 반품비는 송장 1건당 <strong>2,500원 + 부가세 250원</strong>이며 기존 출고비는 유지합니다.</p><form class="return-register"><div class="return-fields"><label>반품 송장번호<input name="tracking" inputmode="numeric" maxlength="40" placeholder="한진 10자리 또는 12자리" required></label><label>품목<select name="product"><option value="eurox">유록스 + 호스</option><option value="europlus">유로플러스 (호스 포함)</option></select></label><label>반품 박스 수<input name="boxes" type="number" min="1" max="10000" value="1" required></label><label>접수일<input name="day" type="date" required></label><label>이름 (선택)<input name="name" maxlength="80"></label><label>원출고 송장 (선택)<input name="original_tracking" inputmode="numeric" maxlength="40"></label><label class="return-wide">메모 (선택)<input name="note" maxlength="500"></label></div><button class="primary" type="submit">반품 접수</button></form><hr><div class="return-tools"><label>이름·송장 검색<input class="return-search" type="search" placeholder="반품·원출고 송장 또는 이름"></label><label>상태<select class="return-status"><option value="all">전체</option><option value="pending">접수 · 입고 대기</option><option value="completed">반품완료</option><option value="voided">접수 취소</option></select></label><button type="button" class="return-refresh">새로고침</button></div><p class="return-message" role="status"></p><p class="return-summary"></p><div class="return-list"></div><dialog class="return-dialog"><form class="return-complete"><h3>반품 입고 확인</h3><p class="return-target"></p><input name="id" type="hidden"><input name="revision" type="hidden"><input name="request_key" type="hidden"><div class="return-fields"><label>양품 박스<input name="good" type="number" min="0" max="10000" required></label><label>불량 박스<input name="bad" type="number" min="0" max="10000" required></label><label>완료일<input name="day" type="date" required></label></div><p>합계 수량을 실제 회수한 박스와 확인하세요. 불량은 출고 가능한 양품 재고에 포함하지 않습니다.</p><p class="return-dialog-message" role="alert"></p><button type="button" class="return-close">닫기</button> <button class="primary" type="submit">반품완료 · 재고 및 반품비 반영</button></form></dialog></div></details>`;
  const $=s=>host.querySelector(s),form=$('.return-register'),dialog=$('.return-dialog'),complete=$('.return-complete');form.elements.day.value=today();form.elements.day.max=today();
+ const editDialog=document.createElement('dialog');editDialog.className='return-dialog return-edit-dialog';
+ editDialog.innerHTML=`<form class="return-edit"><h3>반품 기록 수정</h3><p class="return-edit-target"></p><input name="id" type="hidden"><input name="revision" type="hidden"><input name="request_key" type="hidden"><div class="return-fields">
+ <label>반품 송장번호<input name="tracking" maxlength="40" required></label><label>원출고 송장<input name="original_tracking" maxlength="40"></label><label>품목<select name="product"><option value="eurox">유록스 + 호스</option><option value="europlus">유로플러스</option></select></label><label>반품 박스 수<input name="boxes" type="number" min="1" max="10000" required></label><label>접수일<input name="day" type="date" required></label><label>이름<input name="name" maxlength="80"></label><label class="return-wide">메모<input name="note" maxlength="500"></label></div>
+ <div class="return-fields return-completed-fields"><label>양품 박스<input name="good" type="number" min="0" max="10000"></label><label>불량 박스<input name="bad" type="number" min="0" max="10000"></label><label>완료일<input name="completed_day" type="date"></label></div>
+ <p>완료된 반품은 수정한 품목·양품·불량 수량으로 재고를 다시 계산합니다. 유록스는 박스당 호스 1개를 복귀하고, 반품비는 송장 1건당 2,750원(부가세 포함)을 유지합니다.</p><p class="return-edit-message" role="alert"></p><button type="button" class="return-edit-close">닫기</button> <button type="submit" class="primary">반품 수정 저장</button></form>`;
+ host.append(editDialog);const editForm=editDialog.querySelector('form');let editingCompleted=false;
+ editForm.oninput=()=>{if(!busy)editForm.elements.request_key.value=crypto.randomUUID();};
+ editDialog.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
+ $('.return-edit-close').onclick=()=>{if(!busy)editDialog.close();};
+ editForm.onsubmit=e=>{
+  e.preventDefault();if(busy||!canComplete)return;
+  const v=Object.fromEntries(new FormData(editForm)),identity=v.id;delete v.id;
+  for(const k of ['revision','boxes','good','bad'])v[k]=Number(v[k]);
+  if(!editingCompleted){v.good=0;v.bad=0;v.completed_day='';}
+  if(editingCompleted&&v.good+v.bad!==v.boxes){$('.return-edit-message').textContent='양품과 불량 합계가 반품 박스 수와 같아야 합니다.';return;}
+  run(async()=>{
+   const inputs=[...editForm.querySelectorAll('input,select')];inputs.forEach(x=>x.disabled=true);
+   try{
+    $('.return-edit-message').textContent='반품 기록·재고·정산을 수정하고 있습니다…';
+    const r=await request('PUT',`/${identity}`,v);editDialog.close();await load();
+    message('반품 기록을 수정했습니다. 완료된 반품의 재고와 정산에도 반영했습니다.'+(r.sync_pending?' 다른 화면 정산은 자동 동기화 재시도 중입니다.':''));await changed(r);
+   }finally{inputs.forEach(x=>x.disabled=false);}
+  }).catch(e=>$('.return-edit-message').textContent=e.message);
+ };
  const message=(s,error=false)=>{$('.return-message').textContent=s;$('.return-message').classList.toggle('return-error',error);};
  function render(){
   const q=$('.return-search').value.trim().replace(/[\s-]/g,'').toLowerCase(),filter=$('.return-status').value;
   const list=rows.filter(r=>(filter==='all'||r.status===filter)&&(!q||[r.tracking,r.original_tracking,r.name].some(v=>String(v).replace(/[\s-]/g,'').toLowerCase().includes(q))));
   const done=list.filter(r=>r.status==='completed'),invoices=done.length,boxes=done.reduce((n,r)=>n+r.boxes,0);
   $('.return-summary').textContent=`조회 ${num(list.length)}건 · 반품완료 ${num(invoices)}송장 / ${num(boxes)}박스 · 반품비 ${num(invoices*2750)}원 (부가세 포함)`;
-  $('.return-list').innerHTML=list.map(r=>`<article class="return-card"><div><strong>${esc(r.tracking)}</strong> <span class="return-state">${{pending:'접수 · 입고 대기',completed:'반품완료',voided:'접수 취소'}[r.status]}</span><p>${r.product==='europlus'?'유로플러스':'유록스 + 호스'} · ${num(r.boxes)}박스 · ${esc(r.name||'이름 미입력')}</p><small>접수 ${esc(r.day)}${r.original_tracking?' · 원송장 '+esc(r.original_tracking):''}</small>${r.status==='completed'?`<p><b>양품 ${num(r.good)} / 불량 ${num(r.bad)}박스</b> · 완료 ${esc(r.completed_day)} · 반품비 2,750원${r.product==='eurox'?' · 호스 '+num(r.boxes)+'개 복귀':''}</p>`:''}${r.note?'<p>'+esc(r.note)+'</p>':''}</div>${canComplete?`<div class="return-actions">${r.status==='pending'?`<button class="primary" data-return="${r.id}" data-action="complete">반품완료</button><button data-return="${r.id}" data-action="void">접수 취소</button>`:r.status==='completed'?`<button data-return="${r.id}" data-action="undo">완료 취소</button>`:`<button data-return="${r.id}" data-action="restore">접수 복원</button>`}</div>`:'<small>입고 확인 후 관리자가 완료 처리합니다.</small>'}</article>`).join('')||'<p>해당 반품 기록이 없습니다.</p>';
+  $('.return-list').innerHTML=list.map(r=>`<article class="return-card"><div><strong>${esc(r.tracking)}</strong> <span class="return-state">${{pending:'접수 · 입고 대기',completed:'반품완료',voided:'접수 취소'}[r.status]}</span><p>${r.product==='europlus'?'유로플러스':'유록스 + 호스'} · ${num(r.boxes)}박스 · ${esc(r.name||'이름 미입력')}</p><small>접수 ${esc(r.day)}${r.original_tracking?' · 원송장 '+esc(r.original_tracking):''}</small>${r.status==='completed'?`<p><b>양품 ${num(r.good)} / 불량 ${num(r.bad)}박스</b> · 완료 ${esc(r.completed_day)} · 반품비 2,750원${r.product==='eurox'?' · 호스 '+num(r.boxes)+'개 복귀':''}</p>`:''}${r.note?'<p>'+esc(r.note)+'</p>':''}</div>${canComplete?`<div class="return-actions">${r.status!=='voided'?`<button data-return="${r.id}" data-action="edit">수정</button>`:''}${r.status==='pending'?`<button class="primary" data-return="${r.id}" data-action="complete">반품완료</button><button data-return="${r.id}" data-action="void">접수 취소</button>`:r.status==='completed'?`<button data-return="${r.id}" data-action="undo">완료 취소</button>`:`<button data-return="${r.id}" data-action="restore">접수 복원</button>`}</div>`:'<small>입고 확인 후 관리자가 완료 처리합니다.</small>'}</article>`).join('')||'<p>해당 반품 기록이 없습니다.</p>';
  }
  async function load(){const gen=++generation;const r=await request('GET');if(gen!==generation||!host.isConnected)return;rows=r.rows;canComplete=r.can_complete;last=Date.now();render();}
  async function run(fn){if(busy)return;busy=true;host.querySelectorAll('button').forEach(b=>b.disabled=true);try{await fn();}catch(e){message(e.message,true);throw e;}finally{busy=false;host.querySelectorAll('button').forEach(b=>b.disabled=false);}}
@@ -20,6 +44,14 @@ window.mountNeulbomReturns=function(host,request,changed=async()=>{}){
  $('.return-refresh').onclick=()=>run(async()=>{await load();message('최신 반품 기록입니다.');}).catch(()=>{});
  $('.return-search').oninput=render;$('.return-status').onchange=render;
  $('.return-list').onclick=e=>{const b=e.target.closest('[data-return]');if(!b||busy)return;const row=rows.find(r=>r.id===Number(b.dataset.return));if(!row)return;
+  if(b.dataset.action==='edit'){
+   editingCompleted=row.status==='completed';editForm.reset();
+   for(const k of ['id','revision','tracking','original_tracking','product','boxes','name','note','day','good','bad','completed_day'])editForm.elements[k].value=row[k];
+   editForm.elements.request_key.value=crypto.randomUUID();editForm.elements.day.max=today();editForm.elements.completed_day.max=today();
+   $('.return-completed-fields').hidden=!editingCompleted;for(const k of ['good','bad','completed_day'])editForm.elements[k].required=editingCompleted;
+   $('.return-edit-target').textContent=editingCompleted?'반품완료 기록 · 수량을 수정하면 복귀 재고도 함께 변경됩니다.':'입고 대기 기록 · 반품완료 전까지 재고에 반영되지 않습니다.';
+   $('.return-edit-message').textContent='';editDialog.showModal();return;
+  }
   if(b.dataset.action==='complete'){complete.elements.id.value=row.id;complete.elements.revision.value=row.revision;complete.elements.request_key.value=crypto.randomUUID();complete.elements.good.value=row.boxes;complete.elements.bad.value=0;complete.elements.day.value=today();complete.elements.day.min=row.day;complete.elements.day.max=today();$('.return-target').textContent=`${row.tracking} · ${row.product==='europlus'?'유로플러스':'유록스'} ${row.boxes}박스`;
    $('.return-dialog-message').textContent='';dialog.showModal();return;}
   const action=b.dataset.action;if(!confirm(action==='undo'?'반품완료를 취소하면 복귀한 재고와 반품비를 되돌리고 입고 대기로 바꿉니다. 처리할까요?':action==='void'?'이 반품 접수를 취소할까요?':'이 반품을 입고 대기로 복원할까요?'))return;
@@ -30,7 +62,7 @@ window.mountNeulbomReturns=function(host,request,changed=async()=>{}){
   run(async()=>{const r=await request('POST',`/${v.id}/action`,{revision:Number(v.revision),request_key:v.request_key,action:'complete',day:v.day,good:Number(v.good),bad:Number(v.bad)});dialog.close();await load();message('반품완료 · 양품·불량 재고, 호스 및 반품비를 반영했습니다.'+(r.sync_pending?' 다른 화면 정산은 자동 동기화 재시도 중입니다.':''));await changed(r);}).catch(e=>$('.return-dialog-message').textContent=e.message);
  };
  $('details').ontoggle=()=>{if($('details').open&&!busy&&Date.now()-last>1000)run(load).catch(()=>{});};
- const timer=setInterval(()=>{if(!host.isConnected){clearInterval(timer);return;}if(document.visibilityState==='visible'&&host.getClientRects().length&&$('details').open&&!busy&&!dialog.open)load().catch(e=>message(e.message,true));},30000);
+ const timer=setInterval(()=>{if(!host.isConnected){clearInterval(timer);return;}if(document.visibilityState==='visible'&&host.getClientRects().length&&$('details').open&&!busy&&!dialog.open&&!editDialog.open)load().catch(e=>message(e.message,true));},30000);
  return {refresh:load};
 };
 })();
