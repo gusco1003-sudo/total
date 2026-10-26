@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+<script src="./jinju-pallet-core.js?v=20261026.1"></script>
 <script src="./korea-product-names.js?v=20261019.1"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -554,6 +555,7 @@
     //   · 입고 당일부터 보관료를 부과한다.
     //   · 출고 당일은 차감 전 잔고로 보관료를 부과하고, 재고 차감은 다음날부터 적용한다.
     function calcStorageSettlement(client, fromDate, toDate) {
+      if(client.key==='jinjubulgyosa' && store[client.key]?.productStock) return JinjuPalletCore.calculate(store[client.key],fromDate,toDate,kstToday());
       const data = store[client.key];
       const settings = settingsOf(client);
       const events = toArray(data && data.events);
@@ -1273,5 +1275,5 @@ function calculate(d,start,end){
       }, 10000);
     });
   </script>
-<script src="./statement-pdf.js?v=20261006-batch1"></script><script src="./batch-statements.js?v=20261006-batch1"></script><script src="./jinju-stock-core.js?v=20261015.1"></script><script src="./jinju-inventory-view.js?v=20261015.1"></script></body>
+<script src="./statement-pdf.js?v=20261006-batch1"></script><script src="./batch-statements.js?v=20261006-batch1"></script><script src="./jinju-stock-core.js?v=20261015.1"></script><script src="./jinju-inventory-view.js?v=20261026.1"></script></body>
 </html>
