@@ -70,7 +70,7 @@
     .num-table td, .num-table th { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148,163,184,0.10); white-space: nowrap; }
     .num-table tbody tr:hover { background: rgba(148,163,184,0.05); }
   </style>
-<script src="./cost-ledger-core.js"></script><script src="./newhansol-core.js"></script><script defer src="./fc-material-addon.js?v=20261012-neulbom1"></script><script src="./neulbom-core.js?v=20261014-returns1"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=3"></script><script defer src="./neulbom-total.js?v=2"></script></head>
+<script src="./cost-ledger-core.js"></script><script src="./newhansol-core.js"></script><script defer src="./fc-material-addon.js?v=20261028.1"></script><script src="./neulbom-core.js?v=20261014-returns1"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=3"></script><script defer src="./neulbom-total.js?v=2"></script></head>
 <body class="mesh-bg grain text-white min-h-screen">
 
   <div id="pwModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md">
@@ -299,13 +299,13 @@
     const CLIENTS = [
       {key:'neulbom',name:'늘봄',emoji:'🌿',accent:'#10b981',accentRgb:'16,185,129',schema:'neulbom',path:'neulbom_data/source',desc:'한진택배 2,400원/건 · 부가세 별도 · 입출고 재고',link:'./neulbom.html'},
       {
-        key:'foodtravel', name:'푸드트래블', emoji:'📦', accent:'#0891b2', accentRgb:'8,145,178', schema:'costLedger', path:'foodtravel_data', desc:'보관 700원/PLT·일 · 일별 보관 및 기타작업', link:'./foodtravel.html'
+        key:'foodtravel', name:'푸드트래블', emoji:'📦', accent:'#0891b2', accentRgb:'8,145,178', schema:'costLedger', path:'foodtravel_data', desc:'보관 700원/PLT·일 · 일별 보관 및 기타작업', link: 'https://ts3pl-wms.onrender.com/manage/foodtravel'
       }, {
-        key:'aekyung', name:'애경', emoji:'📋', accent:'#7c3aed', accentRgb:'124,58,237', schema:'costLedger', path:'aekyung_data', desc:'보관 900원/PLT·일 · 입출고·화물비', link:'./aekyung.html'
+        key:'aekyung', name:'애경', emoji:'📋', accent:'#7c3aed', accentRgb:'124,58,237', schema:'costLedger', path:'aekyung_data', desc:'보관 900원/PLT·일 · 입출고·화물비', link: 'https://ts3pl-wms.onrender.com/manage/aekyung'
       }, {
         key: 'newhansol', name: '(주)뉴한솔', emoji: '📋',
         accent: '#0d9488', accentRgb: '13,148,136', schema: 'dailyLedger', path: 'newhansol_data',
-        desc: '보관 1,000원/PLT·일 · 일별 보관 및 기타작업', link: './newhansol.html'
+        desc: '보관 1,000원/PLT·일 · 일별 보관 및 기타작업', link: 'https://ts3pl-wms.onrender.com/manage/newhansol'
       },
       {
         key: 'koreaprovidence', name: '한국프로바이던스', emoji: '🏢',
@@ -875,11 +875,12 @@ function calculate(d,start,end){
                 <span id="badge-${c.key}" class="text-[9px] font-bold px-1.5 py-0.5 rounded border border-slate-700 text-slate-500 flex-shrink-0">—</span>
               </div>
               <div class="mb-5">
-                <p class="text-[10px] text-slate-400 font-semibold mb-1">월 매출</p>
+                <p class="text-[10px] text-slate-400 font-semibold mb-1">월 예상 정산 · 부가세 포함</p>
                 <div class="flex items-baseline gap-2">
                   <span id="rev-${c.key}" class="client-card__value font-mono-num font-black text-3xl sm:text-4xl break-all">0</span>
                   <span class="text-sm text-slate-500">원</span>
                 </div>
+                <p id="tax-${c.key}" class="text-[10px] text-slate-400 font-mono-num mt-2"></p>
                 <p id="note-${c.key}" class="text-[10px] text-slate-500 font-mono-num mt-1 min-h-[1em]"></p>
               </div>
               <div class="grid grid-cols-4 gap-2 text-xs pt-4 border-t border-slate-800/60">
@@ -893,7 +894,7 @@ function calculate(d,start,end){
         const delay = `style="animation-delay:${(i + 1) * 0.08}s"`;
         if(c.key==='jinjubulgyosa')return `<div class="animate-fadeup" ${delay}><a href="${esc(c.link)}" target="_blank" rel="noopener" class="group block">${inner}</a><button type="button" data-jinju-inventory class="mt-3 w-full rounded-xl border border-indigo-500/40 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-200">제품별 재고 · 품목 관리</button></div>`;
         return c.link
-          ? `<a href="${esc(c.link)}" target="_blank" rel="noopener" class="group block animate-fadeup" ${delay}>${inner}</a>`
+          ? `<a href="${esc(c.link)}" target="_blank" rel="noopener" id="editor-${c.key}" class="group block animate-fadeup" ${delay}>${inner}</a>`
           : `<div class="animate-fadeup" ${delay}>${inner}</div>`;
       }).join('');
 
@@ -927,7 +928,10 @@ function calculate(d,start,end){
       document.getElementById('totalWithVat').innerText = comma(sum('total'));
 
       rows.forEach(({ client: c, m }) => {
-        document.getElementById('rev-' + c.key).innerText = comma(m.subtotal);
+        document.getElementById('rev-' + c.key).innerText = syncErr[c.key]?'확인 필요':comma(m.total);
+        document.getElementById('tax-' + c.key).innerText = syncErr[c.key]?'원본 연결을 확인해 주세요.':`공급가액 ${comma(m.subtotal)}원 + 부가세 ${comma(m.vat)}원`;
+        const editorLink=document.getElementById('editor-'+c.key);
+        if(editorLink&&['foodtravel','aekyung','newhansol','fcmaterial'].includes(c.key))editorLink.href=c.link+'?month='+encodeURIComponent(currentMonth);
         document.getElementById('sto-' + c.key).innerText = comma(m.storage);
         document.getElementById('in-'  + c.key).innerText = comma(m.inFee);
         document.getElementById('out-' + c.key).innerText = comma(m.outFee);
