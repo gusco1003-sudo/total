@@ -5,7 +5,7 @@ const $=id=>document.getElementById(id),won=n=>Math.round(n).toLocaleString('ko-
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let nhData=CostLedger.initialData(),nhTag=null,nhDirty=false,nhSaving=false,nhEditId=null;
 function status(text,kind=''){ $('status').textContent=text;$('status').dataset.state=kind; }
-function monthRange(){const month=$('month').value;if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month))throw Error('정산 월을 선택해 주세요.');const [y,m]=month.split('-').map(Number);return {from:month+'-01',to:new Date(Date.UTC(y,m,0)).toISOString().slice(0,10)}}
+function monthRange(){const month=$('month').value,today=CostLedger.today();if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(month)||month>today.slice(0,7))throw Error('오늘까지의 정산 월을 선택해 주세요.');const [y,m]=month.split('-').map(Number),end=new Date(Date.UTC(y,m,0)).toISOString().slice(0,10);return {from:month+'-01',to:end<today?end:today}}
 function stage(data){nhData=CostLedger.normalize(data);nhDirty=true;localStorage.setItem(NH_LOCAL,JSON.stringify(nhData));status('변경사항이 있습니다. 지금 저장을 누르면 통합정산에 반영됩니다.');render();}
 function render(){
  const {from,to}=monthRange(),r=CostLedger.calculate(nhData,from,to);
@@ -17,9 +17,9 @@ function render(){
  const lines=[...groups.values()].map(g=>['파렛트 보관',`${g.qty} PLT × ${g.days}일 × ${won(g.rate)}`,g.amount]);
  lines.push(...r.works.map(d=>[d.desc,`${d.date} · ${d.qty} ${d.unit||'PLT'} · ${d.mode==='total'?'총액 지정':won(d.rate)+'/단위'}`,d.amount]));
  $('statementRows').innerHTML=lines.map(l=>`<tr><td>${esc(l[0])}</td><td>${esc(l[1])}</td><td class="num">${won(l[2])}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">등록 내역이 없습니다.</td></tr>';
- $('statementPeriod').textContent=from+' ~ '+to;$('invoiceSupply').textContent=won(r.subtotal);$('invoiceVat').textContent=won(r.vat);$('invoiceTotal').textContent=won(r.total);
+ $('statementPeriod').textContent=from+' ~ '+to+' · 오늘까지의 기록 · 부가세 포함 합계는 화주라운지와 동일 기준';$('invoiceSupply').textContent=won(r.subtotal);$('invoiceVat').textContent=won(r.vat);$('invoiceTotal').textContent=won(r.total);
 }
-function selectMonth(){try{const {from,to}=monthRange();$('storageFrom').value=from;$('storageTo').value=to;$('workDate').value=from;render();}catch(e){status(e.message,'error')}}
+function selectMonth(){try{const {from,to}=monthRange(),today=CostLedger.today();$('storageFrom').value=from;$('storageTo').value=to;$('workDate').value=today>=from&&today<=to?today:from;const dates=Object.keys(nhData.storage||{}).filter(d=>d>=from&&d<=to).sort(),row=nhData.storage[dates.at(-1)];if(row){$('qty').value=row.qty;$('rate').value=row.rate;}render();}catch(e){status(e.message,'error')}}
 async function loadNH(){
  if(nhDirty&&!confirm('저장하지 않은 변경사항을 버리고 서버 자료를 불러올까요?'))return;
  status('클라우드 자료를 불러오는 중입니다.');
@@ -66,4 +66,7 @@ document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.query
 $('month').onchange=selectMonth;$('save').onclick=saveNH;$('reload').onclick=loadNH;
 window.addEventListener('beforeunload',e=>{if(nhDirty){e.preventDefault();e.returnValue='';}});
 function setWorkMode(){const total=$('workMode').value==='total';$('workRate').required=!total;$('workRate').disabled=total;$('workAmount').required=total;$('workAmount').disabled=!total;}
-$('workMode').onchange=setWorkMode;setWorkMode();$('month').value=ClientConfig.month;$('qty').value=ClientConfig.qty;$('rate').value=ClientConfig.rate;selectMonth();loadNH();
+$('workMode').onchange=setWorkMode;setWorkMode();const requestedMonth=new URLSearchParams(location.search).get('month');$('month').max=CostLedger.today().slice(0,7);$('month').value=/^20\d\d-(0[1-9]|1[0-2])$/.test(requestedMonth||'')&&requestedMonth<=$('month').max?requestedMonth:$('month').max;$('qty').value=ClientConfig.qty;$('rate').value=ClientConfig.rate;selectMonth();loadNH();
+
+function refreshCleanLedger(){if(!nhDirty&&!nhSaving&&!document.hidden&&!document.activeElement?.closest('form'))loadNH();}
+window.addEventListener('focus',refreshCleanLedger);

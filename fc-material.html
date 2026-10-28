@@ -560,6 +560,7 @@ function renderAll(){
   renderEventsTable();
   renderCostsTable();
   renderSettingsForm();
+  renderSettlement();
   document.getElementById('stockHeadline').textContent = currentStock() + ' PLT';
 }
 
@@ -668,7 +669,8 @@ function setRange(kind){
 
 function renderSettlement(){
   const from = document.getElementById('settleFrom').value || getFirstEventDate();
-  const to = document.getElementById('settleTo').value || todayStr();
+  const requestedTo = document.getElementById('settleTo').value || todayStr();
+  const to = requestedTo < todayStr() ? requestedTo : todayStr();
 
   const inEvents = state.events.filter(e => e.type==='in' && e.date>=from && e.date<=to);
   const outEvents = state.events.filter(e => e.type==='out' && e.date>=from && e.date<=to);
@@ -722,6 +724,12 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('inDate').value = todayStr();
   document.getElementById('outDate').value = todayStr();
   document.getElementById('costDate').value = todayStr();
+  const requestedMonth=new URLSearchParams(location.search).get('month');
+  const month=/^20\d\d-(0[1-9]|1[0-2])$/.test(requestedMonth||'')&&requestedMonth<=todayStr().slice(0,7)?requestedMonth:todayStr().slice(0,7);
+  const [year,monthNumber]=month.split('-').map(Number),monthEnd=fmtDay(new Date(Date.UTC(year,monthNumber,0)));
+  document.getElementById('settleFrom').value=month+'-01';
+  document.getElementById('settleTo').value=monthEnd<todayStr()?monthEnd:todayStr();
+  document.getElementById('settleTo').max=todayStr();
   loadData();
 });
 </script>

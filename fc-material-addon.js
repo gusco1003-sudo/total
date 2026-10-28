@@ -3,7 +3,7 @@ if(!CLIENTS.some(c=>c.key==='fcmaterial')) CLIENTS.unshift({
  key:'fcmaterial', name:'에프씨머티리얼', emoji:'🏭', accent:'#38bdf8', accentRgb:'56,189,248',
  schema:'settlement', path:'fcmaterial',
  defaults:{unloadFee:5000,storageFee:800,vatRate:0.1},
- desc:'하차·상차 5,000원/PLT · 보관 800원/PLT·일', link:'./fc-material.html'
+ desc:'하차·상차 5,000원/PLT · 보관 800원/PLT·일', link:'https://ts3pl-wms.onrender.com/manage/fcmaterial'
 });
     async function loadData(showLoader) {
       if (showLoader) {
