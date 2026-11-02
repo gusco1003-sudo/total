@@ -9,9 +9,9 @@ function monthRange(){const month=$('month').value,today=NewHansol.today();if(!/
 function stage(data){nhData=NewHansol.normalize(data);nhDirty=true;localStorage.setItem(NH_LOCAL,JSON.stringify(nhData));status('변경사항이 있습니다. 지금 저장을 누르면 통합정산에 반영됩니다.');render();}
 function render(){
  const {from,to}=monthRange(),r=NewHansol.calculate(nhData,from,to);
- $('storageTotal').textContent=won(r.storage);$('storageDetail').textContent=r.days.length+'일 기록 · '+r.plDays+' PLT·일';
+ $('storageTotal').textContent=won(r.storage);$('storageDetail').textContent=r.note;
  $('workTotal').textContent=won(r.etc);$('workDetail').textContent=r.works.length+'건';$('supplyTotal').textContent=won(r.subtotal);$('taxDetail').textContent='부가세 '+won(r.vat)+' · 합계 '+won(r.total);
- $('storageRows').innerHTML=r.days.map(d=>`<tr><td>${d.date}</td><td class="num">${d.qty}</td><td class="num">${won(d.rate)}</td><td class="num">${won(d.amount)}</td><td><button data-storage="${d.date}">수정</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">이 달에 등록된 보관 내역이 없습니다.</td></tr>';
+ $('storageRows').innerHTML=r.days.map(d=>`<tr><td>${d.date}${d.automatic?' <small class="muted">자동 이월</small>':''}</td><td class="num">${d.qty}</td><td class="num">${won(d.rate)}</td><td class="num">${won(d.amount)}</td><td><button data-storage="${d.date}">수정</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">이 달에 등록된 보관 내역이 없습니다.</td></tr>';
  $('workRows').innerHTML=r.works.map(d=>`<tr><td>${d.date}</td><td>${esc(d.desc)}</td><td class="num">${d.qty}</td><td class="num">${won(d.rate)}</td><td class="num">${won(d.amount)}</td><td>${esc(d.memo)}</td><td><button data-work="${esc(d.id)}">수정</button></td></tr>`).join('')||'<tr><td colspan="7" class="empty">이 달에 등록된 기타작업이 없습니다.</td></tr>';
  const groups=new Map();for(const d of r.days){const key=d.qty+'|'+d.rate;const g=groups.get(key)||{qty:d.qty,rate:d.rate,days:0,amount:0};g.days++;g.amount+=d.amount;groups.set(key,g);}
  const lines=[...groups.values()].map(g=>['파렛트 보관',`${g.qty} PLT × ${g.days}일 × ${won(g.rate)}`,g.amount]);
@@ -19,7 +19,7 @@ function render(){
  $('statementRows').innerHTML=lines.map(l=>`<tr><td>${esc(l[0])}</td><td>${esc(l[1])}</td><td class="num">${won(l[2])}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">등록 내역이 없습니다.</td></tr>';
  $('statementPeriod').textContent=from+' ~ '+to+' · 오늘까지의 기록 · 부가세 포함 합계는 화주라운지와 동일 기준';$('invoiceSupply').textContent=won(r.subtotal);$('invoiceVat').textContent=won(r.vat);$('invoiceTotal').textContent=won(r.total);
 }
-function selectMonth(){try{const {from,to}=monthRange(),today=NewHansol.today();$('storageFrom').value=from;$('storageTo').value=to;$('workDate').value=today>=from&&today<=to?today:from;const dates=Object.keys(nhData.storage||{}).filter(d=>d>=from&&d<=to).sort(),row=nhData.storage[dates.at(-1)];if(row){$('qty').value=row.qty;$('rate').value=row.rate;}render();}catch(e){status(e.message,'error')}}
+function selectMonth(){try{const {from,to}=monthRange(),today=NewHansol.today();$('storageFrom').value=from;$('storageTo').value=to;$('workDate').value=today>=from&&today<=to?today:from;const row=NewHansol.calculate(nhData,from,to).days.at(-1);if(row){$('qty').value=row.qty;$('rate').value=row.rate;}render();}catch(e){status(e.message,'error')}}
 async function loadNH(){
  if(nhDirty&&!confirm('저장하지 않은 변경사항을 버리고 서버 자료를 불러올까요?'))return;
  status('클라우드 자료를 불러오는 중입니다.');
@@ -59,7 +59,7 @@ $('workForm').addEventListener('submit',e=>{e.preventDefault();try{
 }catch(err){status(err.message,'error')}});
 function resetWork(){nhEditId=null;$('workHeading').textContent='기타작업 등록';$('workDesc').value='';$('workQty').value='1';$('workRate').value='';$('workMemo').value='';}
 $('cancelEdit').onclick=resetWork;
-$('storageRows').onclick=e=>{const b=e.target.closest('button[data-storage]');if(!b)return;const date=b.dataset.storage,r=nhData.storage[date];$('storageFrom').value=date;$('storageTo').value=date;$('qty').value=r.qty;$('rate').value=r.rate;$('qty').focus();};
+$('storageRows').onclick=e=>{const b=e.target.closest('button[data-storage]');if(!b)return;const date=b.dataset.storage,r=NewHansol.calculate(nhData,date,date).days[0];if(!r)return;$('storageFrom').value=date;$('storageTo').value=date;$('qty').value=r.qty;$('rate').value=r.rate;$('qty').focus();};
 $('workRows').onclick=e=>{const b=e.target.closest('button[data-work]');if(!b)return;const r=nhData.works.find(w=>w.id===b.dataset.work);nhEditId=r.id;$('workHeading').textContent='기타작업 수정';$('workDate').value=r.date;$('workDesc').value=r.desc;$('workQty').value=r.qty;$('workRate').value=r.rate;$('workMemo').value=r.memo;$('workDesc').focus();};
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-tab]').forEach(t=>t.setAttribute('aria-selected',String(t===b)));document.querySelectorAll('.tab-panel').forEach(t=>t.classList.toggle('hidden',t.id!=='tab-'+b.dataset.tab));});
 $('month').onchange=selectMonth;$('save').onclick=saveNH;$('reload').onclick=loadNH;

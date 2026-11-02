@@ -1,6 +1,7 @@
 (function(root){
   'use strict';
   const dayMs=86400000;
+  const dailyStorage=root.DailyStorage||(typeof require==='function'?require('./daily-storage-core.js'):null);
   const today=()=>new Date(Date.now()+9*3600000).toISOString().slice(0,10);
   const validDate=s=>typeof s==='string'&&/^20\d\d-\d\d-\d\d$/.test(s)&&!isNaN(Date.parse(s+'T00:00:00Z'))&&new Date(s+'T00:00:00Z').toISOString().slice(0,10)===s;
   const nextDay=s=>new Date(Date.parse(s+'T00:00:00Z')+dayMs).toISOString().slice(0,10);
@@ -21,11 +22,11 @@
   function calculate(data,from,to){
     if(!validDate(from)||!validDate(to)||from>to)throw Error('정산 기간을 확인해 주세요.');
     const d=normalize(data);
-    const days=Object.entries(d.storage).filter(([date])=>date>=from&&date<=to).sort(([a],[b])=>a.localeCompare(b)).map(([date,row])=>({date,...row,amount:row.qty*row.rate}));
+    const days=dailyStorage.days(d.storage,from,to,today());
     const works=d.works.filter(row=>row.date>=from&&row.date<=to).sort((a,b)=>a.date.localeCompare(b.date)).map(row=>({...row,amount:row.mode==='total'?row.amount:row.qty*row.rate}));
     const storage=days.reduce((n,r)=>n+r.amount,0),inFee=works.filter(r=>r.category==='inFee').reduce((n,r)=>n+r.amount,0),outFee=works.filter(r=>r.category==='outFee').reduce((n,r)=>n+r.amount,0),etc=works.filter(r=>r.category==='etc').reduce((n,r)=>n+r.amount,0),subtotal=storage+inFee+outFee+etc,vat=Math.round(subtotal*d.settings.vatRate),total=subtotal+vat;
     if(![storage,etc,subtotal,vat,total].every(Number.isSafeInteger))throw Error('정산 금액이 계산 가능한 범위를 초과했습니다.');
-    return {storage,etc,subtotal,vat,total,inFee,outFee,days,works,plDays:days.reduce((n,r)=>n+r.qty,0),note:days.length+'일 기록 · '+days.reduce((n,r)=>n+r.qty,0)+' PLT·일'};
+    return {storage,etc,subtotal,vat,total,inFee,outFee,days,works,plDays:days.reduce((n,r)=>n+r.qty,0),note:days.length+'일 계산 · '+days.reduce((n,r)=>n+r.qty,0)+' PLT·일 · 자동 이월 '+days.filter(r=>r.automatic).length+'일'};
   }
   function setStorage(data,from,to,qty,rate){
     if(!validDate(from)||!validDate(to)||from>to||!integer(qty,1000000)||!integer(rate,100000000))throw Error('날짜, 파렛트 수량, 단가를 확인해 주세요.');

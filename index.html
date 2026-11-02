@@ -70,7 +70,7 @@
     .num-table td, .num-table th { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148,163,184,0.10); white-space: nowrap; }
     .num-table tbody tr:hover { background: rgba(148,163,184,0.05); }
   </style>
-<script src="./cost-ledger-core.js"></script><script src="./newhansol-core.js"></script><script defer src="./fc-material-addon.js?v=20261028.1"></script><script src="./neulbom-core.js?v=20261014-returns1"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=3"></script><script defer src="./neulbom-total.js?v=2"></script></head>
+<script src="./daily-storage-core.js?v=20261102.1"></script><script src="./cost-ledger-core.js?v=20261102.1"></script><script src="./newhansol-core.js?v=20261102.1"></script><script defer src="./fc-material-addon.js?v=20261028.1"></script><script src="./neulbom-core.js?v=20261014-returns1"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=3"></script><script defer src="./neulbom-total.js?v=2"></script></head>
 <body class="mesh-bg grain text-white min-h-screen">
 
   <div id="pwModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md">
@@ -526,8 +526,13 @@
     }
 
     // 재고 증감. 택배 출고는 건수가 아니라 deductPlt 만큼만 차감한다.
-    function stockDelta(e) {
+    function settlementEvents(client, data) {
+      return toArray(data && data.events).filter(e => client.key !== 'sbnutrition' || e.status !== 'planned');
+    }
+
+    function stockDelta(e, client) {
       if (!e) return 0;
+      if (client?.key === 'sbnutrition') return (e.type === 'in' ? 1 : -1) * num(e.stockQty ?? e.qty);
       if (e.type === 'in') return num(e.qty);
       if (e.method === 'courier' || e.method === 'box') return -num(e.deductPlt);
       return -num(e.qty);
@@ -558,12 +563,12 @@
       if(client.key==='jinjubulgyosa' && store[client.key]?.productStock) return JinjuPalletCore.calculate(store[client.key],fromDate,toDate,kstToday());
       const data = store[client.key];
       const settings = settingsOf(client);
-      const events = toArray(data && data.events);
+      const events = settlementEvents(client, data);
       const inDeltas = {}, outDeltas = {};
 
       events.forEach(e => {
         if (!e || !e.date) return;
-        const d = stockDelta(e);
+        const d = stockDelta(e, client);
         if (!d) return;
         if (d > 0) inDeltas[e.date] = (inDeltas[e.date] || 0) + d;
         else outDeltas[e.date] = (outDeltas[e.date] || 0) + d;
@@ -658,7 +663,7 @@
       if (!data || !range) return empty;
 
       const settings = settingsOf(client);
-      const events = toArray(data.events);
+      const events = settlementEvents(client, data);
       const inRange = events.filter(e => e.date >= range.from && e.date <= range.to);
 
       let inFee = 0, outFee = 0;
@@ -1113,7 +1118,7 @@ function calculate(d,start,end){
         head = th(['날짜 / 항목', '산출 내역', '금액']);
         if (range && data.app) {
           const result = (c.schema==='costLedger'?CostLedger:NewHansol).calculate(data, range.from, range.to);
-          body = result.days.map(d => td([d.date + ' · 보관', d.qty + ' PLT × ' + comma(d.rate) + '원', comma(d.amount)])).join('');
+          body = result.days.map(d => td([d.date + ' · 보관' + (d.automatic ? ' (자동 이월)' : ''), d.qty + ' PLT × ' + comma(d.rate) + '원', comma(d.amount)])).join('');
           body += result.works.map(d => td([d.date + ' · ' + esc(d.desc), d.qty + (d.mode==='total'?' PLT · 총액 지정':' × ' + comma(d.rate) + '원'), comma(d.amount)])).join('');
         }
         if (!body) body = '<tr><td colspan="3">해당 월에 등록된 자료가 없습니다.</td></tr>';
@@ -1164,7 +1169,7 @@ function calculate(d,start,end){
           body += segs.map(s => td([s.start === s.end ? s.start : `${s.start} ~ ${s.end}`,
             `${s.balance} PLT × ${s.days}일 × ${comma(st.storageFee)}원`, comma(s.fee)])).join('');
         }
-        const evts = range ? toArray(data.events).filter(e => e.date >= range.from && e.date <= range.to)
+        const evts = range ? settlementEvents(c, data).filter(e => e.date >= range.from && e.date <= range.to)
           .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || ''))) : [];
         if (evts.length) {
           body += `<tr><td colspan="3" class="text-left pt-4 font-bold text-white">입출고 비용</td></tr>`;
