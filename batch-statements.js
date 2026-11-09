@@ -10,8 +10,8 @@ async function issueMonthlyStatements(){
  loading=true;
  try{
   await loadData(false);render();
-  const failed=CLIENTS.filter(c=>syncErr[c.key]);
-  if(failed.length)throw Error(failed.map(c=>c.name).join(', ')+' 자료를 불러오지 못했습니다. 새로고침 후 다시 발급해 주세요.');
+  const failed=CLIENTS.filter(c=>calcClient(c,month).error);
+  if(failed.length)throw Error(failed.map(c=>c.name).join(', ')+' 정산 자료를 확인한 후 다시 발급해 주세요.');
   const statements=CLIENTS.map(c=>{
    const m=calcClient(c,month),detail=calculationDetail(c.key,month),table=document.createElement('table');
    table.innerHTML='<thead>'+detail.head+'</thead><tbody>'+detail.body+'</tbody>';

@@ -134,7 +134,7 @@
     <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
       <!-- 연동 실패 화주가 있을 때만 노출 -->
       <div id="syncWarning" class="hidden mb-5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-        <p class="text-xs font-bold text-amber-300 mb-0.5">일부 화주 데이터를 불러오지 못했습니다</p>
+        <p class="text-xs font-bold text-amber-300 mb-0.5">정산 확인이 필요한 화주가 있습니다</p>
         <p id="syncWarningDetail" class="text-[11px] text-amber-200/80 font-mono-num"></p>
       </div>
 
@@ -146,7 +146,7 @@
           <div class="relative">
             <div class="flex items-center gap-2 mb-3 flex-wrap">
               <div class="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30">
-                <span class="text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">Total Revenue</span>
+                <span id="totalScope" class="text-[10px] font-bold uppercase tracking-[0.15em] text-amber-300">Total Revenue</span>
               </div>
               <span id="currentMonthLabel" class="text-[11px] text-slate-400 font-mono-num"></span>
               <span class="text-[10px] text-slate-500">공급가액 (VAT 별도)</span>
@@ -685,17 +685,24 @@
     function calcClient(client, month) {
       const cacheKey = client.key + '|' + month;
       if (calcCache[cacheKey]) return calcCache[cacheKey];
-      const r = client.schema === 'neulbom' ? calcNeulbom(client, month)
-              : ['dailyLedger','costLedger'].includes(client.schema) ? calcDailyLedger(client, month)
-              : client.schema === 'providence' ? calcProvidence(client, month)
-              : client.schema === 'wms'    ? calcWms(client, month)
-              : client.schema === 'orders' ? calcOrders(client, month)
-              :                              calcSettlement(client, month);
-      // 각 개별 정산서에 표시되는 원 단위 금액을 먼저 확정한 뒤 합산한다.
-      r.total = Math.round(r.subtotal + r.vat);
-      ['storage', 'inFee', 'outFee', 'etc', 'subtotal', 'vat'].forEach(k => { r[k] = Math.round(r[k]); });
-      calcCache[cacheKey] = r;
-      return r;
+      if (syncErr[client.key]) return { error: syncErr[client.key] };
+      try {
+        const r = client.schema === 'neulbom' ? calcNeulbom(client, month)
+                : ['dailyLedger','costLedger'].includes(client.schema) ? calcDailyLedger(client, month)
+                : client.schema === 'providence' ? calcProvidence(client, month)
+                : client.schema === 'wms'    ? calcWms(client, month)
+                : client.schema === 'orders' ? calcOrders(client, month)
+                :                              calcSettlement(client, month);
+        // 각 개별 정산서에 표시되는 원 단위 금액을 먼저 확정한 뒤 합산한다.
+        r.total = Math.round(r.subtotal + r.vat);
+        for (const k of ['storage', 'inFee', 'outFee', 'etc', 'subtotal', 'vat']) r[k] = Math.round(r[k]);
+        if (![r.storage, r.inFee, r.outFee, r.etc, r.subtotal, r.vat, r.total].every(Number.isFinite)) {
+          throw Error('정산 금액을 확인해 주세요.');
+        }
+        return calcCache[cacheKey] = r;
+      } catch (error) {
+        return calcCache[cacheKey] = { error: error.message || '정산 자료를 확인해 주세요.' };
+      }
     }
 
 
@@ -919,11 +926,16 @@ function calculate(d,start,end){
     function render() {
       currentMonth = document.getElementById('monthSelector').value || currentMonth;
       const rows = CLIENTS.map(c => ({ client: c, m: calcClient(c, currentMonth) }));
+      const confirmed = rows.filter(({ m }) => !m.error);
+      const failed = rows.filter(({ m }) => m.error);
+      const amount = (m, k) => m.error ? '—' : comma(m[k]);
+      const totalLabel = failed.length ? '확인된 화주 합계' : '합계';
 
-      const sum = k => rows.reduce((s, r) => s + r.m[k], 0);
+      const sum = k => confirmed.reduce((s, r) => s + r.m[k], 0);
       const tStorage = sum('storage'), tIn = sum('inFee'), tOut = sum('outFee'), tEtc = sum('etc');
       const tSub = sum('subtotal'), tVat = sum('vat');
 
+      document.getElementById('totalScope').innerText = failed.length ? totalLabel : 'Total Revenue';
       document.getElementById('totalRevenue').innerText = comma(tSub);
       document.getElementById('totalStorage').innerText = comma(tStorage);
       document.getElementById('totalOut').innerText     = comma(tOut);
@@ -933,21 +945,21 @@ function calculate(d,start,end){
       document.getElementById('totalWithVat').innerText = comma(sum('total'));
 
       rows.forEach(({ client: c, m }) => {
-        document.getElementById('rev-' + c.key).innerText = syncErr[c.key]?'확인 필요':comma(m.total);
-        document.getElementById('tax-' + c.key).innerText = syncErr[c.key]?'원본 연결을 확인해 주세요.':`공급가액 ${comma(m.subtotal)}원 + 부가세 ${comma(m.vat)}원`;
+        document.getElementById('rev-' + c.key).innerText = m.error ? '확인 필요' : comma(m.total);
+        document.getElementById('tax-' + c.key).innerText = m.error || `공급가액 ${comma(m.subtotal)}원 + 부가세 ${comma(m.vat)}원`;
         const editorLink=document.getElementById('editor-'+c.key);
         if(editorLink&&['foodtravel','aekyung','newhansol','fcmaterial'].includes(c.key))editorLink.href=c.link+'?month='+encodeURIComponent(currentMonth);
-        document.getElementById('sto-' + c.key).innerText = comma(m.storage);
-        document.getElementById('in-'  + c.key).innerText = comma(m.inFee);
-        document.getElementById('out-' + c.key).innerText = comma(m.outFee);
-        document.getElementById('etc-' + c.key).innerText = comma(m.etc);
+        document.getElementById('sto-' + c.key).innerText = amount(m, 'storage');
+        document.getElementById('in-'  + c.key).innerText = amount(m, 'inFee');
+        document.getElementById('out-' + c.key).innerText = amount(m, 'outFee');
+        document.getElementById('etc-' + c.key).innerText = amount(m, 'etc');
         document.getElementById('note-' + c.key).innerText = m.note || '';
 
         const badge = document.getElementById('badge-' + c.key);
-        if (syncErr[c.key]) {
-          badge.textContent = '연동실패';
+        if (m.error) {
+          badge.textContent = syncErr[c.key] ? '연동실패' : '정산 확인';
           badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded border border-rose-800 text-rose-400 flex-shrink-0';
-          badge.title = syncErr[c.key];
+          badge.title = m.error;
         } else {
           badge.textContent = '연동';
           badge.className = 'text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-900 text-emerald-500 flex-shrink-0';
@@ -957,9 +969,9 @@ function calculate(d,start,end){
 
       // 매출 비중
       rows.forEach(({ client: c, m }) => {
-        const pct = tSub > 0 ? (m.subtotal / tSub) * 100 : (100 / CLIENTS.length);
+        const pct = m.error || tSub <= 0 ? 0 : (m.subtotal / tSub) * 100;
         document.getElementById('ratio-' + c.key).style.width = pct + '%';
-        document.getElementById('ratioText-' + c.key).innerText = pct.toFixed(1) + '%';
+        document.getElementById('ratioText-' + c.key).innerText = m.error ? '—' : pct.toFixed(1) + '%';
       });
       document.getElementById('ratioLabel').innerText = tSub > 0 ? `${comma(tSub / 10000)}만원 기준` : '데이터 없음';
 
@@ -967,20 +979,20 @@ function calculate(d,start,end){
       document.getElementById('detailBody').innerHTML = rows.map(({ client: c, m }) => `
         <tr>
           <td class="text-left"><span class="inline-block w-2 h-2 rounded-full mr-1.5 align-middle" style="background:${c.accent}"></span>${esc(c.name)}</td>
-          <td class="text-right text-slate-300">${comma(m.storage)}</td>
-          <td class="text-right text-slate-300">${comma(m.inFee)}</td>
-          <td class="text-right text-slate-300">${comma(m.outFee)}</td>
-          <td class="text-right text-slate-300">${comma(m.etc)}</td>
-          <td class="text-right text-white font-bold">${comma(m.subtotal)}</td>
-          <td class="text-right text-slate-400">${comma(m.vat)}</td>
-          <td class="text-right text-amber-200 font-bold">${comma(m.total)}</td>
-          <td class="text-center">${syncErr[c.key] ? '<span class="text-rose-400" title="' + esc(syncErr[c.key]) + '">실패</span>' : '<span class="text-emerald-500">' + '정상' + '</span>'}</td>
+          <td class="text-right text-slate-300">${amount(m, 'storage')}</td>
+          <td class="text-right text-slate-300">${amount(m, 'inFee')}</td>
+          <td class="text-right text-slate-300">${amount(m, 'outFee')}</td>
+          <td class="text-right text-slate-300">${amount(m, 'etc')}</td>
+          <td class="text-right text-white font-bold">${amount(m, 'subtotal')}</td>
+          <td class="text-right text-slate-400">${amount(m, 'vat')}</td>
+          <td class="text-right text-amber-200 font-bold">${amount(m, 'total')}</td>
+          <td class="text-center">${m.error ? '<span class="text-rose-400" title="' + esc(m.error) + '">확인 필요</span>' : '<span class="text-emerald-500">정상</span>'}</td>
           <td class="text-center"><button onclick="openDetail('${c.key}')" class="text-cyan-400 hover:text-cyan-300 underline underline-offset-2">근거</button></td>
         </tr>`).join('');
 
       document.getElementById('detailFoot').innerHTML = `
         <tr class="border-t border-slate-700">
-          <td class="text-left">합계</td>
+          <td class="text-left">${totalLabel}</td>
           <td class="text-right">${comma(tStorage)}</td>
           <td class="text-right">${comma(tIn)}</td>
           <td class="text-right">${comma(tOut)}</td>
@@ -992,13 +1004,11 @@ function calculate(d,start,end){
           <td></td>
         </tr>`;
 
-      // 연동 실패 배너
-      const failed = CLIENTS.filter(c => syncErr[c.key]);
       const warn = document.getElementById('syncWarning');
       if (failed.length) {
         warn.classList.remove('hidden');
         document.getElementById('syncWarningDetail').innerText =
-          failed.map(c => `${c.name}: ${syncErr[c.key]}`).join('  ·  ') + '  — 해당 화주 금액은 0원으로 표시됩니다.';
+          failed.map(({ client, m }) => `${client.name}: ${m.error}`).join('  ·  ') + ' · 위 화주는 합계에서 제외됩니다.';
       } else {
         warn.classList.add('hidden');
       }
@@ -1032,7 +1042,7 @@ function calculate(d,start,end){
           labels: months.map(m => parseInt(m.split('-')[1]) + '월'),
           datasets: CLIENTS.map(c => ({
             label: c.name,
-            data: months.map(mo => calcClient(c, mo).subtotal),
+            data: months.map(mo => calcClient(c, mo).subtotal ?? null),
             borderColor: c.accent,
             backgroundColor: `rgba(${c.accentRgb},0.10)`,
             fill: true, tension: 0.4, borderWidth: 2.5,
@@ -1064,10 +1074,10 @@ function calculate(d,start,end){
         data: {
           labels: CLIENTS.map(c => c.name),
           datasets: [
-            { label: '보관료',   data: rows.map(r => r.m.storage), backgroundColor: '#3b82f6', borderRadius: 4 },
-            { label: '출고비',   data: rows.map(r => r.m.outFee),  backgroundColor: '#10b981', borderRadius: 4 },
-            { label: '입고비',   data: rows.map(r => r.m.inFee),   backgroundColor: '#f43f5e', borderRadius: 4 },
-            { label: '기타비용', data: rows.map(r => r.m.etc),     backgroundColor: '#f59e0b', borderRadius: 4 }
+            { label: '보관료',   data: rows.map(r => r.m.storage ?? null), backgroundColor: '#3b82f6', borderRadius: 4 },
+            { label: '출고비',   data: rows.map(r => r.m.outFee ?? null),  backgroundColor: '#10b981', borderRadius: 4 },
+            { label: '입고비',   data: rows.map(r => r.m.inFee ?? null),   backgroundColor: '#f43f5e', borderRadius: 4 },
+            { label: '기타비용', data: rows.map(r => r.m.etc ?? null),     backgroundColor: '#f59e0b', borderRadius: 4 }
           ]
         },
         options: {
@@ -1106,6 +1116,7 @@ function calculate(d,start,end){
       const th = a => `<tr class="text-left">${a.map((t, i) => `<th class="${i ? 'text-right' : 'text-left'}">${t}</th>`).join('')}</tr>`;
       const td = a => `<tr>${a.map((t, i) => `<td class="${i ? 'text-right' : 'text-left'} text-slate-300">${t}</td>`).join('')}</tr>`;
       let head = '', body = '';
+      if (m.error) return { c, m, range, head: th(['정산 상태']), body: td([esc(m.error)]) };
 
       if (c.schema === 'neulbom') {
         head=th(['날짜 / 항목','산출 내역','공급가액']);
@@ -1196,7 +1207,7 @@ function calculate(d,start,end){
         range ? `${range.from} ~ ${range.to} (한국시간 기준)` : `${currentMonth} — 아직 시작되지 않은 달`;
       document.getElementById('dmHead').innerHTML = head;
       document.getElementById('dmBody').innerHTML = body;
-      document.getElementById('dmFoot').innerHTML = `
+      document.getElementById('dmFoot').innerHTML = m.error ? '' : `
         <div class="flex flex-wrap gap-x-6 gap-y-1 justify-end">
           <span>공급가액 <b class="text-white">${comma(m.subtotal)}</b>원</span>
           <span>부가세 <b class="text-slate-200">${comma(m.vat)}</b>원</span>
@@ -1212,21 +1223,27 @@ function calculate(d,start,end){
     /* ---------- CSV 내보내기 ---------- */
 
     function exportCsv() {
-      const head = ['화주','보관료','입고비','출고비','기타비용','공급가액','부가세','합계','연동상태'];
+      const head = ['화주','보관료','입고비','출고비','기타비용','공급가액','부가세','합계','정산상태'];
       const lines = [head.join(',')];
       let t = { storage:0, inFee:0, outFee:0, etc:0, subtotal:0, vat:0, total:0 };
+      let hasErrors = false;
 
       CLIENTS.forEach(c => {
         const m = calcClient(c, currentMonth);
+        if (m.error) {
+          hasErrors = true;
+          lines.push([`"${c.name}"`, '', '', '', '', '', '', '', '확인 필요'].join(','));
+          return;
+        }
         Object.keys(t).forEach(k => t[k] += m[k]);
         lines.push([
           `"${c.name}"`, Math.round(m.storage), Math.round(m.inFee), Math.round(m.outFee),
           Math.round(m.etc), Math.round(m.subtotal), Math.round(m.vat),
-          m.total, syncErr[c.key] ? '실패' : '정상'
+          m.total, '정상'
         ].join(','));
       });
 
-      lines.push(['"합계"', Math.round(t.storage), Math.round(t.inFee), Math.round(t.outFee),
+      lines.push([hasErrors ? '"확인된 화주 합계"' : '"합계"', Math.round(t.storage), Math.round(t.inFee), Math.round(t.outFee),
         Math.round(t.etc), Math.round(t.subtotal), Math.round(t.vat),
         t.total, ''].join(','));
 
@@ -1284,5 +1301,5 @@ function calculate(d,start,end){
       }, 10000);
     });
   </script>
-<script src="./statement-pdf.js?v=20261006-batch1"></script><script src="./batch-statements.js?v=20261006-batch1"></script><script src="./jinju-stock-core.js?v=20261015.1"></script><script src="./jinju-inventory-view.js?v=20261026.1"></script></body>
+<script src="./statement-pdf.js?v=20261006-batch1"></script><script src="./batch-statements.js?v=20261109.1"></script><script src="./jinju-stock-core.js?v=20261015.1"></script><script src="./jinju-inventory-view.js?v=20261026.1"></script></body>
 </html>
