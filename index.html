@@ -70,7 +70,7 @@
     .num-table td, .num-table th { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148,163,184,0.10); white-space: nowrap; }
     .num-table tbody tr:hover { background: rgba(148,163,184,0.05); }
   </style>
-<script src="./daily-storage-core.js?v=20261102.1"></script><script src="./cost-ledger-core.js?v=20261102.1"></script><script src="./newhansol-core.js?v=20261102.1"></script><script defer src="./fc-material-addon.js?v=20261028.1"></script><script src="./neulbom-core.js?v=20261014-returns1"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=3"></script><script defer src="./neulbom-total.js?v=2"></script></head>
+<script src="./daily-storage-core.js?v=20261102.1"></script><script src="./cost-ledger-core.js?v=20261102.1"></script><script src="./newhansol-core.js?v=20261102.1"></script><script defer src="./fc-material-addon.js?v=20261028.1"></script><script src="./neulbom-core.js?v=20261119-inclusive"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=3"></script><script defer src="./neulbom-total.js?v=2"></script></head>
 <body class="mesh-bg grain text-white min-h-screen">
 
   <div id="pwModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md">
@@ -297,7 +297,7 @@
     const ADMIN_PW = "4656";
 
     const CLIENTS = [
-      {key:'neulbom',name:'늘봄',emoji:'🌿',accent:'#10b981',accentRgb:'16,185,129',schema:'neulbom',path:'neulbom_data/source',desc:'한진택배 2,400원/건 · 부가세 별도 · 입출고 재고',link:'./neulbom.html'},
+      {key:'neulbom',name:'늘봄',emoji:'🌿',accent:'#10b981',accentRgb:'16,185,129',schema:'neulbom',path:'neulbom_data/source',desc:'한진택배 2,400원/건 · 부가세 포함 · 입출고 재고',link:'./neulbom.html'},
       {
         key:'foodtravel', name:'푸드트래블', emoji:'📦', accent:'#0891b2', accentRgb:'8,145,178', schema:'costLedger', path:'foodtravel_data', desc:'보관 700원/PLT·일 · 일별 보관 및 기타작업', link: 'https://ts3pl-wms.onrender.com/manage/foodtravel'
       }, {
@@ -710,7 +710,7 @@
       const range=monthRange(month),d=store[client.key];
       if(!range||!d?.app)return {storage:0,inFee:0,outFee:0,etc:0,subtotal:0,vat:0,total:0};
       const r=Neulbom.calculate(d,range.from,range.to);
-      return {...r,note:'택배 '+comma(r.parcel_boxes)+'건 × 2,400원 · 별도 출고 무료 · 갱신 '+d.updated_at.slice(0,16).replace('T',' ')};
+      return {...r,note:'택배 '+comma(r.parcel_boxes)+'건 × 2,400원 (부가세 포함) · 별도 출고 무료 · 갱신 '+d.updated_at.slice(0,16).replace('T',' ')};
     }
     function calcDailyLedger(client, month) {
       const range = monthRange(month), data = store[client.key];

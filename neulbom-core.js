@@ -6,7 +6,7 @@ function step(s,n=1){return new Date(Date.parse(s+'T00:00:00Z')+n*86400000).toIS
 function integer(v){return Number.isSafeInteger(v)&&v>=0&&v<=10000000;}
 function normalize(raw){
  const d=structuredClone(raw);
- if(!d||d.app!=='neulbom'||d.version!==1||d.unit_price!==RATE||d.vat!=='exclusive'||typeof d.updated_at!=='string'||isNaN(Date.parse(d.updated_at)))throw Error('늘봄 정산 자료가 아직 연결되지 않았습니다.');
+ if(!d||d.app!=='neulbom'||d.version!==1||d.unit_price!==RATE||!['exclusive','inclusive'].includes(d.vat)||typeof d.updated_at!=='string'||isNaN(Date.parse(d.updated_at)))throw Error('늘봄 정산 자료가 아직 연결되지 않았습니다.');
  d.shipments=d.shipments||{};d.entries=Array.isArray(d.entries)?d.entries:Object.values(d.entries||{});d.warnings=d.warnings||[];
  if(typeof d.shipments!=='object'||Array.isArray(d.shipments)||!Array.isArray(d.warnings))throw Error('정산 자료 형식을 확인하세요.');
  for(const [day,n] of Object.entries(d.shipments))if(!date(day)||!integer(n))throw Error('택배 출고 수량 또는 날짜를 확인하세요.');
@@ -38,10 +38,10 @@ function calculate(raw,from,to,asOf=today()){
  function balance(until){let received=0,parcel=0,other=0;for(const [k,b]of Object.entries(days))if(k<=until){received+=b.received;parcel+=b.eurox_parcel_boxes;other+=b.other_boxes;}
   return active.some(e=>e.kind==='receipt'&&e.day<=until)?received-parcel-other+returnEffect(d,until).eurox.total:null;
  }
- const daily=[];for(let k=from;k<=to;k=step(k)){const b={...bucket(k)};b.remaining=balance(k);b.return_supply=b.return_invoices*RETURN_RATE;b.supply=b.parcel_boxes*RATE+b.return_supply;b.vat=Math.round(b.supply/10);b.total=b.supply+b.vat;daily.push(b);}
- const sum=k=>daily.reduce((n,b)=>n+b[k],0),subtotal=sum('supply'),vat=Math.round(subtotal/10);
+ const daily=[];for(let k=from;k<=to;k=step(k)){const b={...bucket(k)};b.remaining=balance(k);b.return_supply=b.return_invoices*RETURN_RATE;b.parcel_total=b.parcel_boxes*RATE;b.parcel_supply=Math.round(b.parcel_total/1.1);b.supply=b.parcel_supply+b.return_supply;b.total=b.parcel_total+b.return_supply*1.1;b.vat=b.total-b.supply;daily.push(b);}
+ const sum=k=>daily.reduce((n,b)=>n+b[k],0),subtotal=sum('supply'),vat=sum('vat');
  if(!Number.isSafeInteger(subtotal+vat))throw Error('정산 금액 범위를 초과했습니다.');
- return {daily,entries:d.entries.filter(e=>e.day>=from&&e.day<=to).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id),storage:0,inFee:0,outFee:sum('parcel_boxes')*RATE,etc:sum('return_supply'),return_invoices:sum('return_invoices'),return_boxes:sum('return_boxes'),return_supply:sum('return_supply'),subtotal,vat,total:subtotal+vat,parcel_boxes:sum('parcel_boxes'),eurox_parcel_boxes:sum('eurox_parcel_boxes'),europlus_parcel_boxes:sum('europlus_parcel_boxes'),received:sum('received'),other_boxes:sum('other_boxes'),pallets:sum('pallets'),hose_boxes:sum('hose_boxes'),remaining:balance(asOf),closing:balance(to),today_parcels:d.shipments[asOf]||0,updated_at:d.updated_at,warnings:d.warnings};
+ return {daily,entries:d.entries.filter(e=>e.day>=from&&e.day<=to).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id),storage:0,inFee:0,outFee:sum('parcel_supply'),etc:sum('return_supply'),return_invoices:sum('return_invoices'),return_boxes:sum('return_boxes'),return_supply:sum('return_supply'),subtotal,vat,total:subtotal+vat,parcel_boxes:sum('parcel_boxes'),eurox_parcel_boxes:sum('eurox_parcel_boxes'),europlus_parcel_boxes:sum('europlus_parcel_boxes'),received:sum('received'),other_boxes:sum('other_boxes'),pallets:sum('pallets'),hose_boxes:sum('hose_boxes'),remaining:balance(asOf),closing:balance(to),today_parcels:d.shipments[asOf]||0,updated_at:d.updated_at,warnings:d.warnings};
 }
 const HOSE_PACK=25;
 function stockNet(raw,until=today()){
