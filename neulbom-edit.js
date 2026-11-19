@@ -5,7 +5,7 @@ const entryPanel=$('entries').closest('section'),manualPanel=$('manualEntries').
 entryPanel.id='entryRecords';manualPanel.id='manualRecords';
 const guide=document.createElement('section');
 guide.className='panel admin-only no-print edit-guide';
-guide.innerHTML='<h2>기록 · 재고 수정</h2><p class="muted">기존 기록의 <strong>수정</strong> 버튼을 누르면 날짜·품목·수량·송장·메모를 바꿀 수 있습니다. 수정 내용에 맞춰 재고와 날짜별 정산이 다시 계산됩니다. 기록이 안 보이면 날짜별 정산의 조회 기간을 넓혀 주세요.</p><nav class="row"><a class="button" href="#entryRecords">입고 · 화물출고 수정</a><a class="button" href="#manualRecords">수동 택배 수정</a><a class="button" href="#stockPanel">실사 재고 수정</a><button type="button" id="editReturnsLink">반품 수정</button></nav><p class="muted">실사 재고는 유록스·호스의 현재 수량을 조정합니다. 유로플러스는 품목별 입출고 기록에서 수정하세요. 출고 2,400원 · 반품 2,500원 (각 부가세 별도).</p>';
+guide.innerHTML='<h2>기록 · 재고 수정</h2><p class="muted">기존 기록의 <strong>수정</strong> 버튼을 누르면 날짜·품목·수량·송장·메모를 바꿀 수 있습니다. 수정 내용에 맞춰 재고와 날짜별 정산이 다시 계산됩니다. 기록이 안 보이면 날짜별 정산의 조회 기간을 넓혀 주세요.</p><nav class="row"><a class="button" href="#entryRecords">입고 · 화물출고 수정</a><a class="button" href="#manualRecords">수동 택배 수정</a><a class="button" href="#stockPanel">실사 재고 수정</a><button type="button" id="editReturnsLink">반품 수정</button></nav><p class="muted">실사 재고는 유록스·호스의 현재 수량을 조정합니다. 유로플러스는 품목별 입출고 기록에서 수정하세요. 출고 2,400원 · 반품 2,500원 (각 부가세 포함).</p>';
 $('content').prepend(guide);
 $('editReturnsLink').onclick=()=>{const h=$('neulbomReturns');if(h){h.querySelector('details').open=true;h.scrollIntoView({behavior:'smooth'});}};
 const dialog=document.createElement('dialog');dialog.id='manualEditDialog';dialog.className='record-dialog';
