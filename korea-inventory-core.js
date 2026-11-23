@@ -11,6 +11,9 @@
  const clone=v=>JSON.parse(JSON.stringify(v));
  const sum=xs=>xs.reduce((n,x)=>n+x,0);
  const kstToday=()=>new Date(Date.now()+32400000).toISOString().slice(0,10);
+ const AUTO_STORAGE='empty-next-day-v1';
+ const nextDate=date=>new Date(Date.parse(date+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+ const autoStorage=d=>d.inventory?.storagePolicy===AUTO_STORAGE;
  function dateOK(s){return typeof s==='string'&&/^20\d\d-\d\d-\d\d$|^2100-\d\d-\d\d$/.test(s)&&!isNaN(Date.parse(s))&&new Date(s+'T00:00:00Z').toISOString().slice(0,10)===s;}
  function assertDate(s,max){if(!dateOK(s)||(max&&s>max))throw Error('처리일은 오늘까지의 올바른 날짜로 입력해 주세요.');}
  function positive(n){return Number.isSafeInteger(n)&&n>0&&n<=1000000;}
@@ -24,7 +27,7 @@
   const opening=d.entries.find(e=>e.id==='initial-20260903'&&e.type==='IN'&&e.qty===20&&e.date==='2026-09-03');
   const balance=d.entries.filter(e=>e.date<='2026-10-14').reduce((n,e)=>n+(e.type==='IN'?e.qty:e.type==='OUT'?-e.qty:0),0);
   if(!opening||balance!==20)throw Error('기존 보관 수량이 확인한 20파렛트와 다릅니다. 품목별 기초 재고를 다시 확인해 주세요.');
-  d.inventory={version:1,receipts:[{id:'opening-ultra',date:opening.date,product:'ultra',palletQty:Array(20).fill(120),openingEntryId:opening.id,note:'기존 입고분 · 울트라 20파렛트 × 120개'}],
+  d.inventory={version:1,storagePolicy:AUTO_STORAGE,receipts:[{id:'opening-ultra',date:opening.date,product:'ultra',palletQty:Array(20).fill(120),openingEntryId:opening.id,note:'기존 입고분 · 울트라 20파렛트 × 120개'}],
    plans:[{id:'planned-20261015-classic',date:'2026-10-15',product:'classic',palletQty:[120,120,120,120,120,120,116],note:'기존 적재 6파렛트 720개 + 새 적재 1파렛트 116개'},
     {id:'planned-20261015-attract',date:'2026-10-15',product:'attract',palletQty:[120],note:'입고된 그대로'},
     {id:'planned-20261015-ultra',date:'2026-10-15',product:'ultra',palletQty:[120],note:'입고된 그대로'},
@@ -34,6 +37,7 @@
  function normalize(document){
   const d=clone(document);if(!d.inventory)return d;const inv=d.inventory;
   if(inv.version!==1)throw Error('지원하지 않는 재고 자료 버전입니다.');
+  if(inv.storagePolicy!==undefined&&inv.storagePolicy!==AUTO_STORAGE)throw Error('지원하지 않는 보관료 차감 기준입니다.');
   for(const key of ['receipts','plans','shipments','releases']){if(inv[key]===undefined)inv[key]=[];if(!Array.isArray(inv[key])||inv[key].length>100000)throw Error('재고 내역 형식을 확인해 주세요.');}
   const ids=new Set();
   for(const e of [...inv.receipts,...inv.plans,...inv.shipments,...inv.releases]){if(!idOK(e.id)||ids.has(e.id)||!dateOK(e.date))throw Error('중복되거나 잘못된 재고 내역입니다.');ids.add(e.id);}
@@ -51,7 +55,7 @@
   for(const {kind,event:e} of events){
    if(kind===0){e.palletQty.forEach((qty,i)=>pallets.push({id:e.id+'-'+i,receiptId:e.id,product:e.product,date:e.date,initial:qty,remaining:qty,released:false}));continue;}
    if(kind===1){const totals=linesCanonical(e.packages.flatMap(p=>p.lines)),freed=[];
-    for(const line of totals){let need=line.qty;for(const p of pallets.filter(p=>p.product===line.product&&!p.released&&p.remaining>0)){const taken=Math.min(p.remaining,need);p.remaining-=taken;need-=taken;if(p.remaining===0)freed.push(p.id);if(!need)break;}if(need)throw Error(e.date+' '+product(line.product).name+' 재고가 '+need.toLocaleString('ko-KR')+product(line.product).unit+' 부족합니다. 입고 확정과 출고 수량을 확인해 주세요.');}
+    for(const line of totals){let need=line.qty;for(const p of pallets.filter(p=>p.product===line.product&&!p.released&&p.remaining>0)){const taken=Math.min(p.remaining,need);p.remaining-=taken;need-=taken;if(p.remaining===0){p.emptiedOn=e.date;p.storageExcludedFrom=nextDate(e.date);freed.push(p.id);}if(!need)break;}if(need)throw Error(e.date+' '+product(line.product).name+' 재고가 '+need.toLocaleString('ko-KR')+product(line.product).unit+' 부족합니다. 입고 확정과 출고 수량을 확인해 주세요.');}
     shipmentResults[e.id]={totals,freed,parcelCount:e.packages.length};continue;
    }
    for(const id of e.palletIds){const p=pallets.find(p=>p.id===id);if(!p||p.released||p.remaining!==0)throw Error('빈 파렛트 출고 이후에는 관련 출고를 취소할 수 없습니다. 빈 파렛트 출고를 먼저 취소해 주세요.');p.released=true;}releaseResults[e.id]=e.palletIds.length;
@@ -59,13 +63,21 @@
   return {pallets,shipmentResults,releaseResults};
  }
  function snapshot(document,asOf=kstToday()){
-  const d=normalize(document),state=replay(d,asOf);const rows=catalog.map(p=>{const pallets=state.pallets.filter(x=>x.product===p.id&&!x.released),pending=(d.inventory?.plans||[]).filter(x=>x.product===p.id&&!x.cancelled&&!x.receivedId);return {...p,qty:sum(pallets.map(x=>x.remaining)),pallets:pallets.length,empty:pallets.filter(x=>!x.remaining).length,plannedQty:sum(pending.flatMap(x=>x.palletQty)),plannedPallets:sum(pending.map(x=>x.palletQty.length))};});return {...state,rows};
+  const d=normalize(document),state=replay(d,asOf);const rows=catalog.map(p=>{const all=state.pallets.filter(x=>x.product===p.id),pallets=all.filter(x=>autoStorage(d)?!x.storageExcludedFrom||x.storageExcludedFrom>asOf:!x.released),pending=(d.inventory?.plans||[]).filter(x=>x.product===p.id&&!x.cancelled&&!x.receivedId);return {...p,qty:sum(all.map(x=>x.remaining)),pallets:pallets.length,empty:pallets.filter(x=>!x.remaining).length,excluded:all.filter(x=>x.storageExcludedFrom&&x.storageExcludedFrom<=asOf).length,plannedQty:sum(pending.flatMap(x=>x.palletQty)),plannedPallets:sum(pending.map(x=>x.palletQty.length))};});return {...state,rows};
  }
+ function storageDeductions(document){
+  const d=normalize(document);if(!d.inventory)return [];
+  return replay(d,'2100-12-31').pallets.filter(p=>p.emptiedOn).map(p=>({palletId:p.id,product:p.product,emptiedOn:p.emptiedOn,date:p.storageExcludedFrom})).sort((a,b)=>a.date.localeCompare(b.date)||a.palletId.localeCompare(b.palletId));
+ }
+ function enableAutoStorage(document){const d=requireInventory(document);d.inventory.storagePolicy=AUTO_STORAGE;return rebuild(d);}
  function rebuild(document){
   const d=normalize(document);if(!d.inventory)return d;const inv=d.inventory,generated=[];
   for(const r of inv.receipts.filter(r=>!r.cancelled&&!r.openingEntryId))generated.push({id:'kp-in-'+r.id,date:r.date,type:'IN',qty:r.palletQty.length,note:product(r.product).name+' '+sum(r.palletQty).toLocaleString('ko-KR')+product(r.product).unit+' · '+r.palletQty.length+' PLT',inventoryRef:'receipt:'+r.id});
   for(const s of inv.shipments.filter(s=>!s.cancelled))generated.push({id:'kp-parcel-'+s.id,date:s.date,type:'PARCEL',qty:s.packages.length,note:'피킹리스트 · '+s.packages.length+'건 · 품목 재고 차감',inventoryRef:'shipment:'+s.id});
-  for(const r of inv.releases.filter(r=>!r.cancelled))generated.push({id:'kp-out-'+r.id,date:r.date,type:'OUT',qty:r.palletIds.length,note:'실제 빈 파렛트 출고 '+r.palletIds.length+' PLT',inventoryRef:'release:'+r.id});
+  if(autoStorage(d)){
+   const groups=new Map();for(const p of storageDeductions(d)){const key=p.date+'-'+p.product;if(!groups.has(key))groups.set(key,{...p,palletIds:[]});groups.get(key).palletIds.push(p.palletId);}
+   for(const [key,g] of groups)generated.push({id:'kp-auto-out-'+key,date:g.date,type:'OUT',qty:g.palletIds.length,note:product(g.product).name+' '+g.palletIds.length+' PLT · '+g.emptiedOn+' 비움 · 다음날부터 보관료 자동 제외',inventoryRef:'auto-empty:'+key,palletIds:g.palletIds,emptiedOn:g.emptiedOn});
+  }else for(const r of inv.releases.filter(r=>!r.cancelled))generated.push({id:'kp-out-'+r.id,date:r.date,type:'OUT',qty:r.palletIds.length,note:'실제 빈 파렛트 출고 '+r.palletIds.length+' PLT',inventoryRef:'release:'+r.id});
   const preserved=d.entries.filter(e=>!e.inventoryRef),ids=new Set(preserved.map(e=>e.id));for(const e of generated){if(ids.has(e.id))throw Error('정산 내역 번호가 중복됩니다.');ids.add(e.id);}d.entries=[...preserved,...generated];return d;
  }
  function requireInventory(document){const d=normalize(document);if(!d.inventory)throw Error('품목 재고 초기화를 먼저 완료해 주세요.');return d;}
@@ -101,5 +113,5 @@
   }if(!result.length)throw Error('출고할 상품 행이 없습니다.');return result;
  }
  function stableSignature(v){const canonical=x=>Array.isArray(x)?x.map(canonical):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,canonical(x[k])])):x;return JSON.stringify(canonical(v??null));}
- return {catalog,product,kstToday,seed,normalize,snapshot,rebuild,addPlan,addReceipt,confirmPlan,cancelReceipt,cancelPlan,previewShipment,ship,cancelShipment,releaseEmpty,cancelRelease,isManagedEntry,matchProduct,trackingKey,parseDelimited,detectHeader,parsePickingRows,stableSignature};
+ return {catalog,product,kstToday,seed,normalize,snapshot,rebuild,storageDeductions,enableAutoStorage,autoStorage,addPlan,addReceipt,confirmPlan,cancelReceipt,cancelPlan,previewShipment,ship,cancelShipment,releaseEmpty,cancelRelease,isManagedEntry,matchProduct,trackingKey,parseDelimited,detectHeader,parsePickingRows,stableSignature};
 });

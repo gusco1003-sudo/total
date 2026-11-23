@@ -40,6 +40,7 @@ if(!CLIENTS.some(c=>c.key==='fcmaterial')) CLIENTS.unshift({
           try {
             if (!json) throw new Error('개별 정산프로그램에서 서버 연결을 먼저 완료해 주세요.');
             if (json.entries === undefined) json.entries = [];
+            if(KoreaInventory.autoStorage(json))json=KoreaInventory.rebuild(json);
             Providence.validateData(json);
             if (json.vat !== 'exclusive') throw new Error('부가세 별도 10% 자료를 확인해 주세요.');
           } catch (e) { err = e.message; json = null; }

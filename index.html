@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+<script src="./korea-inventory-core.js?v=20261123.1" defer></script>
 <script src="./jinju-pallet-core.js?v=20261119-vat2"></script>
 <script src="./korea-product-names.js?v=20261119-vat2"></script>
   <meta charset="UTF-8">
@@ -70,7 +71,7 @@
     .num-table td, .num-table th { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148,163,184,0.10); white-space: nowrap; }
     .num-table tbody tr:hover { background: rgba(148,163,184,0.05); }
   </style>
-<script src="./daily-storage-core.js?v=20261119-vat2"></script><script src="./cost-ledger-core.js?v=20261119-vat2"></script><script src="./newhansol-core.js?v=20261119-vat2"></script><script defer src="./fc-material-addon.js?v=20261119-vat2"></script><script src="./neulbom-core.js?v=20261119-vat2"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=20261119-vat2"></script><script defer src="./neulbom-total.js?v=20261119-vat2"></script></head>
+<script src="./daily-storage-core.js?v=20261119-vat2"></script><script src="./cost-ledger-core.js?v=20261119-vat2"></script><script src="./newhansol-core.js?v=20261119-vat2"></script><script defer src="./fc-material-addon.js?v=20261123.1"></script><script src="./neulbom-core.js?v=20261119-vat2"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=20261119-vat2"></script><script defer src="./neulbom-total.js?v=20261119-vat2"></script></head>
 <body class="mesh-bg grain text-white min-h-screen">
 
   <div id="pwModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md">
@@ -736,6 +737,7 @@ function validateData(d){
  return d;
 }
 function calculate(d,start,end){
+ if(typeof KoreaInventory!=='undefined'&&KoreaInventory.autoStorage(d))d=KoreaInventory.rebuild(d);
  if(!validDate(start)||!validDate(end)||start>end)throw Error('정산 기간을 올바르게 입력하세요.');
  let balance=0,inQty=0,parcelQty=0,pltDays=0;const daily=[],byDate=new Map();
  for(const e of d.entries){const delta=e.type==='IN'?e.qty:e.type==='OUT'?-e.qty:0;if(e.date<start)balance+=delta;else if(e.date<=end){if(!byDate.has(e.date))byDate.set(e.date,{IN:0,OUT:0,PARCEL:0});byDate.get(e.date)[e.type]+=e.qty;}}
@@ -755,7 +757,7 @@ function calculate(d,start,end){
       const r = Providence.calculate(d,range.from,range.to);
       return {storage:r.storageFee,inFee:r.inFee,outFee:r.parcelFee,etc:0,
         subtotal:r.supply,vat:r.tax,total:r.total,
-        note:'서버 연동 · 입고일 포함 / 출고 당일 제외'};
+        note:'서버 연동 · 빈 파렛트 다음 날부터 자동 차감'};
     }
 
     /* ---------- 데이터 로드 ---------- */
@@ -795,6 +797,7 @@ function calculate(d,start,end){
           try {
             if (!json) throw new Error('개별 정산프로그램에서 서버 연결을 먼저 완료해 주세요.');
             if (json.entries === undefined) json.entries = [];
+            if(KoreaInventory.autoStorage(json))json=KoreaInventory.rebuild(json);
             Providence.validateData(json);
             if (json.vat !== 'exclusive') throw new Error('부가세 별도 10% 자료를 확인해 주세요.');
           } catch (e) { err = e.message; json = null; }

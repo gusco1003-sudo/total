@@ -4,10 +4,48 @@ const K=require('./korea-inventory-core.js'),XLSX=require('./vendor/xlsx-0.20.3.
 const engine=fs.readFileSync(__dirname+'/korea-providence.html','utf8').match(/<script id="engine">([\s\S]*?)<\/script>/)[1];
 const context={module:{exports:{}}};vm.runInNewContext(engine+'\nmodule.exports={initialData,calculate,validateData};',context);const E=context.module.exports;
 const initial=()=>JSON.parse(JSON.stringify(E.initialData()));
-const seeded=()=>K.seed(initial());
+// Keep legacy-policy fixtures to verify previously saved documents still load.
+const seeded=()=>{const d=K.seed(initial());delete d.inventory.storagePolicy;return d;};
 function arrived(){let d=seeded();for(const p of d.inventory.plans)d=K.confirmPlan(d,p.id,'receipt-'+p.product,'2026-10-15','2026-10-15');return d;}
 const stock=(d,p)=>K.snapshot(d,'2026-10-15').rows.find(x=>x.id===p);
 const row=(tracking,product,qty)=>({tracking,product,qty});
+test('new inventories enable automatic next-day storage exclusion',()=>{
+ assert.equal(K.autoStorage(K.seed(initial())),true);
+});
+test('automatic storage includes the emptying day and excludes the next day without a button',()=>{
+ let d=K.enableAutoStorage(arrived());d=K.ship(d,[row('auto-1','ultra',120)],'2026-10-15','auto-1','2026-10-15');
+ assert.equal(stock(d,'ultra').pallets,21);assert.equal(K.snapshot(d,'2026-10-16').rows.find(p=>p.id==='ultra').pallets,20);
+ assert.equal(E.calculate(d,'2026-10-15','2026-10-15').storageFee,21000);
+ assert.equal(E.calculate(d,'2026-10-16','2026-10-16').storageFee,20300);
+ assert.equal(d.inventory.releases.length,0);assert.equal(d.entries.filter(e=>e.inventoryRef?.startsWith('auto-empty:')).length,1);
+ assert.deepEqual(K.rebuild(d),d);
+});
+test('automatic deduction is undone by shipment cancellation and respects partial pallets',()=>{
+ let d=K.enableAutoStorage(arrived());d=K.ship(d,[row('partial','classic',719)],'2026-10-15','partial','2026-10-15');
+ assert.equal(K.storageDeductions(d).filter(p=>p.product==='classic').length,5);
+ d=K.ship(d,[row('last','classic',1)],'2026-10-16','last','2026-10-16');
+ assert.equal(K.storageDeductions(d).filter(p=>p.product==='classic').length,6);
+ assert.equal(K.snapshot(d,'2026-10-17').rows.find(p=>p.id==='classic').pallets,1);
+ d=K.cancelShipment(d,'last');assert.equal(K.storageDeductions(d).filter(p=>p.product==='classic').length,5);
+ assert.equal(K.snapshot(d,'2026-10-17').rows.find(p=>p.id==='classic').qty,117);
+});
+test('manual releases are retained as history without double deduction, regardless of button date',()=>{
+ for(const releaseDay of ['2026-10-15','2026-10-20']){
+  let legacy=K.ship(arrived(),[row('release','ultra',120)],'2026-10-15','release','2026-10-20');
+  legacy=K.releaseEmpty(legacy,releaseDay,'manual','2026-10-20');const original=JSON.parse(JSON.stringify(legacy));
+  const d=K.enableAutoStorage(legacy);assert.deepEqual(legacy,original);assert.deepEqual(d.inventory.releases,legacy.inventory.releases);
+  const outs=d.entries.filter(e=>e.type==='OUT');assert.equal(outs.length,1);assert.equal(outs[0].date,'2026-10-16');assert.equal(outs[0].qty,1);
+  assert.equal(K.snapshot(d,'2026-10-15').rows.find(p=>p.id==='ultra').pallets,21);
+  assert.equal(E.calculate(d,'2026-10-16','2026-10-20').storageFee,5*29*700);
+ }
+});
+test('month-end emptying is billed on the final day and excluded from the first day of next month',()=>{
+ let d=K.enableAutoStorage(arrived());d=K.ship(d,[row('month-end','ultra',120)],'2026-10-31','month-end','2026-10-31');
+ assert.equal(K.storageDeductions(d)[0].date,'2026-11-01');
+ assert.equal(E.calculate(d,'2026-10-31','2026-10-31').storageFee,30*700);
+ assert.equal(E.calculate(d,'2026-11-01','2026-11-01').storageFee,29*700);
+ assert.throws(()=>K.previewShipment(d,[row('month-end','ultra',119)],'2026-10-31','2026-10-31'),/수량이 다릅니다/);
+});
 test('opening products and planned pallets do not alter any existing settlement entry or fee',()=>{
  const original=initial(),d=K.seed(original);assert.deepEqual(d.entries,original.entries);assert.equal(E.calculate(d,'2026-10-01','2026-10-14').storageFee,196000);assert.equal(E.calculate(d,'2026-10-01','2026-10-14').total,215600);assert.equal(stock(d,'ultra').qty,2400);assert.equal(stock(d,'ultra').pallets,20);assert.equal(stock(d,'classic').qty,0);assert.equal(stock(d,'classic').plannedQty,836);assert.equal(K.snapshot(d).rows.reduce((n,p)=>n+p.plannedPallets,0),10);assert.deepEqual(K.seed(d),d);
 });
