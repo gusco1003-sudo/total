@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
 <script src="./korea-inventory-core.js?v=20261123.1" defer></script>
+<script src="./jinju-courier-fees.js?v=20261124.1"></script>
 <script src="./jinju-pallet-core.js?v=20261119-vat2"></script>
 <script src="./korea-product-names.js?v=20261119-vat2"></script>
   <meta charset="UTF-8">
@@ -540,7 +541,7 @@
     }
 
     // 단가표에 어떤 키가 있는지로 화주별 과금 방식을 자동 판별한다.
-    function eventFee(settings, e) {
+    function eventFee(settings, e, clientKey) {
       if (!e) return 0;
       if (e.type === 'in') {
         if (settings.containerFee) {                       // 컨테이너 회차당 고정비
@@ -551,7 +552,7 @@
       }
       if (settings.outboundFee) {
         if (e.method === 'box') return num(e.count) * num(e.boxRate ?? settings.outboundFee.box ?? 400);
-        if (e.method === 'courier') return num(e.count) * num(settings.outboundFee.courier);
+        if (e.method === 'courier') return clientKey==='jinjubulgyosa'?JinjuCourierFees.event(e,num(settings.outboundFee.courier)).total:num(e.count)*num(settings.outboundFee.courier);
         return num(e.qty) * num(settings.outboundFee[e.method]);
       }
       return num(e.qty) * num(settings.unloadFee);
@@ -669,7 +670,7 @@
 
       let inFee = 0, outFee = 0;
       inRange.forEach(e => {
-        const fee = eventFee(settings, e);
+        const fee = eventFee(settings, e, client.key);
         if (e.type === 'in') inFee += fee; else outFee += fee;
       });
 
@@ -1188,8 +1189,8 @@ function calculate(d,start,end){
         if (evts.length) {
           body += `<tr><td colspan="3" class="text-left pt-4 font-bold text-white">입출고 비용</td></tr>`;
           body += evts.map(e => td([`${e.date} ${esc(e.time || '')}`,
-            `${e.type === 'in' ? '입고' : '출고'} · ${esc(e.product || '')} ${e.method === 'box' ? (num(e.count) + '박스 × ' + comma(e.boxRate ?? st.outboundFee.box ?? 400) + '원 · 차감 ' + num(e.deductPlt) + ' PLT') : e.method === 'courier' ? (num(e.count) + '건') : (num(e.qty) + ' PLT')}`,
-            comma(eventFee(st, e))])).join('');
+            `${e.type === 'in' ? '입고' : '출고'} · ${esc(e.product || '')} ${e.method === 'box' ? (num(e.count) + '박스 × ' + comma(e.boxRate ?? st.outboundFee.box ?? 400) + '원 · 차감 ' + num(e.deductPlt) + ' PLT') : e.method === 'courier' ? (num(e.count) + '건'+(c.key==='jinjubulgyosa'?' · 제주 '+JinjuCourierFees.event(e).jeju+'건 × 3,000원 추가'+(JinjuCourierFees.event(e).unknown?' · 주소 확인 필요 '+JinjuCourierFees.event(e).unknown+'건':''):'')) : (num(e.qty) + ' PLT')}`,
+            comma(eventFee(st, e, c.key))])).join('');
         }
         const costs = range ? toArray(data.costs).filter(x => x.date >= range.from && x.date <= range.to) : [];
         if (costs.length) {
