@@ -31,17 +31,18 @@ function returnEffect(d,until){const out={eurox:{good:0,bad:0,total:0},europlus:
 function calculate(raw,from,to,asOf=today()){
  const d=normalize(raw);if(!date(from)||!date(to)||!date(asOf)||from>to||Date.parse(to)-Date.parse(from)>365*86400000)throw Error('조회 기간은 최대 366일로 입력하세요.');
  const active=d.entries.filter(e=>!e.voided),days={};
- const bucket=k=>days[k]||(days[k]={date:k,received:0,parcel_boxes:0,eurox_parcel_boxes:0,europlus_parcel_boxes:0,other_boxes:0,pallets:0,hose_boxes:0,return_invoices:0,return_boxes:0,return_good:0,return_bad:0});
+ const bucket=k=>days[k]||(days[k]={date:k,received:0,parcel_boxes:0,eurox_parcel_boxes:0,europlus_parcel_boxes:0,cargo_count:0,cargo_supply:0,other_boxes:0,pallets:0,hose_boxes:0,return_invoices:0,return_boxes:0,return_good:0,return_bad:0});
  for(const [k,n] of Object.entries(d.shipments)){const b=bucket(k);b.parcel_boxes=n;b.europlus_parcel_boxes=d.europlus_shipments[k]||0;b.eurox_parcel_boxes=n-b.europlus_parcel_boxes;}
  for(const e of active){const b=bucket(e.day);if(e.kind==='receipt')b.received+=e.goods_boxes;else{b.other_boxes+=e.goods_boxes;b.pallets+=e.pallets;b.hose_boxes+=e.hose_boxes;}}
  for(const r of d.returns)if(r.status==='completed'){const b=bucket(r.completed_day);b.return_invoices++;b.return_boxes+=r.boxes;b.return_good+=r.good;b.return_bad+=r.bad;}
  function balance(until){let received=0,parcel=0,other=0;for(const [k,b]of Object.entries(days))if(k<=until){received+=b.received;parcel+=b.eurox_parcel_boxes;other+=b.other_boxes;}
   return active.some(e=>e.kind==='receipt'&&e.day<=until)?received-parcel-other+returnEffect(d,until).eurox.total:null;
  }
- const daily=[];for(let k=from;k<=to;k=step(k)){const b={...bucket(k)};b.remaining=balance(k);b.return_total=b.return_invoices*RETURN_RATE;b.return_supply=Math.round(b.return_total/1.1);b.parcel_total=b.parcel_boxes*RATE;b.parcel_supply=Math.round(b.parcel_total/1.1);b.supply=b.parcel_supply+b.return_supply;b.total=b.parcel_total+b.return_total;b.vat=b.total-b.supply;daily.push(b);}
+ for(const e of [...d.entries,...d.europlus_entries])if(!e.voided&&e.kind==='outbound'&&e.day>='2026-11-01')bucket(e.day).cargo_count++;
+ const daily=[];for(let k=from;k<=to;k=step(k)){const b={...bucket(k)};b.remaining=balance(k);b.return_total=b.return_invoices*RETURN_RATE;b.return_supply=Math.round(b.return_total/1.1);b.parcel_total=b.parcel_boxes*RATE;b.parcel_supply=Math.round(b.parcel_total/1.1);b.cargo_supply=b.cargo_count*5000;b.supply=b.parcel_supply+b.return_supply+b.cargo_supply;b.total=b.parcel_total+b.return_total+b.cargo_count*5500;b.vat=b.total-b.supply;daily.push(b);}
  const sum=k=>daily.reduce((n,b)=>n+b[k],0),subtotal=sum('supply'),vat=sum('vat');
  if(!Number.isSafeInteger(subtotal+vat))throw Error('정산 금액 범위를 초과했습니다.');
- return {daily,entries:d.entries.filter(e=>e.day>=from&&e.day<=to).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id),storage:0,inFee:0,outFee:sum('parcel_supply'),etc:sum('return_supply'),return_invoices:sum('return_invoices'),return_boxes:sum('return_boxes'),return_supply:sum('return_supply'),subtotal,vat,total:subtotal+vat,parcel_boxes:sum('parcel_boxes'),eurox_parcel_boxes:sum('eurox_parcel_boxes'),europlus_parcel_boxes:sum('europlus_parcel_boxes'),received:sum('received'),other_boxes:sum('other_boxes'),pallets:sum('pallets'),hose_boxes:sum('hose_boxes'),remaining:balance(asOf),closing:balance(to),today_parcels:d.shipments[asOf]||0,updated_at:d.updated_at,warnings:d.warnings};
+ return {daily,entries:d.entries.filter(e=>e.day>=from&&e.day<=to).sort((a,b)=>b.day.localeCompare(a.day)||b.id-a.id),storage:0,inFee:0,outFee:sum('parcel_supply'),etc:sum('return_supply')+sum('cargo_supply'),cargo_count:sum('cargo_count'),cargo_supply:sum('cargo_supply'),cargo_total:sum('cargo_count')*5500,return_invoices:sum('return_invoices'),return_boxes:sum('return_boxes'),return_supply:sum('return_supply'),subtotal,vat,total:subtotal+vat,parcel_boxes:sum('parcel_boxes'),eurox_parcel_boxes:sum('eurox_parcel_boxes'),europlus_parcel_boxes:sum('europlus_parcel_boxes'),received:sum('received'),other_boxes:sum('other_boxes'),pallets:sum('pallets'),hose_boxes:sum('hose_boxes'),remaining:balance(asOf),closing:balance(to),today_parcels:d.shipments[asOf]||0,updated_at:d.updated_at,warnings:d.warnings};
 }
 const HOSE_PACK=25;
 function stockNet(raw,until=today()){

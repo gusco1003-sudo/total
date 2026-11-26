@@ -72,7 +72,7 @@
     .num-table td, .num-table th { padding: 0.55rem 0.6rem; border-bottom: 1px solid rgba(148,163,184,0.10); white-space: nowrap; }
     .num-table tbody tr:hover { background: rgba(148,163,184,0.05); }
   </style>
-<script src="./daily-storage-core.js?v=20261119-vat2"></script><script src="./cost-ledger-core.js?v=20261119-vat2"></script><script src="./newhansol-core.js?v=20261119-vat2"></script><script defer src="./fc-material-addon.js?v=20261123.1"></script><script src="./neulbom-core.js?v=20261119-vat2"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=20261119-vat2"></script><script defer src="./neulbom-total.js?v=20261119-vat2"></script></head>
+<script src="./daily-storage-core.js?v=20261119-vat2"></script><script src="./cost-ledger-core.js?v=20261119-vat2"></script><script src="./newhansol-core.js?v=20261119-vat2"></script><script defer src="./fc-material-addon.js?v=20261123.1"></script><script src="./neulbom-core.js?v=20261126-cargo"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script><script defer src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script><script defer src="./neulbom-auth.js?v=20261119-vat2"></script><script defer src="./neulbom-total.js?v=20261119-vat2"></script></head>
 <body class="mesh-bg grain text-white min-h-screen">
 
   <div id="pwModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md">
@@ -712,7 +712,7 @@
       const range=monthRange(month),d=store[client.key];
       if(!range||!d?.app)return {storage:0,inFee:0,outFee:0,etc:0,subtotal:0,vat:0,total:0};
       const r=Neulbom.calculate(d,range.from,range.to);
-      return {...r,note:'택배 '+comma(r.parcel_boxes)+'건 × 2,400원 (부가세 포함) · 별도 출고 무료 · 갱신 '+d.updated_at.slice(0,16).replace('T',' ')};
+      return {...r,note:'택배 '+comma(r.parcel_boxes)+'건 × 2,400원 (부가세 포함) · 화물출고 건당 5,000원 + 부가세 · 갱신 '+d.updated_at.slice(0,16).replace('T',' ')};
     }
     function calcDailyLedger(client, month) {
       const range = monthRange(month), data = store[client.key];
